@@ -146,7 +146,6 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 }
 @keyframes pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .listen-btn[aria-pressed="true"]::before { animation: none; } }
-#listen-lang { flex: 1 1 150px; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
 .listen-status { margin: 0; font-size: .88rem; color: var(--muted); }
 .listen-status b { color: var(--ink); }
 .listen-history { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -226,10 +225,6 @@ html { scroll-behavior: smooth; }
       <label for="quick-input" class="quick-label">Karte aus dem Stream nachschlagen</label>
       <div class="listen">
         <button type="button" id="listen-btn" class="listen-btn" aria-pressed="false">Mithören starten</button>
-        <select id="listen-lang" aria-label="Sprache des Streams">
-          <option value="de-DE">Stream auf Deutsch</option>
-          <option value="en-US">Stream auf Englisch</option>
-        </select>
       </div>
       <p id="listen-status" class="listen-status" hidden></p>
       <div id="listen-history" class="listen-history" hidden></div>
@@ -701,7 +696,7 @@ async function startListening() {
   quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
   await quickLoading;
   const r = (rec = new Recognition());
-  rec.lang = document.getElementById("listen-lang").value;
+  rec.lang = "de-DE"; // Streams laufen auf Deutsch
   rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 3;
@@ -779,7 +774,6 @@ async function init() {
   document.getElementById("view-all").addEventListener("click", () => setView("all"));
   document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
   document.getElementById("listen-btn").addEventListener("click", () => (listening ? stopListening() : startListening()));
-  document.getElementById("listen-lang").addEventListener("change", () => { if (listening) { stopListening(); startListening(); } });
   document.getElementById("listen-history").addEventListener("click", (e) => {
     const b = e.target.closest("[data-q]");
     if (!b) return;
