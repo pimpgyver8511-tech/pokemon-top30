@@ -152,6 +152,10 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .qprice span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .qprice b { font-size: .98rem; }
 .qprice.key { outline: 2px solid var(--foil); }
+.lang-badge {
+  display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .05em; vertical-align: 2px;
+  padding: 1px 6px; border-radius: 4px; background: var(--ink); color: var(--bg);
+}
 .qnone { color: var(--muted); font-size: .9rem; }
 .qfoot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sort-btn {
@@ -202,8 +206,8 @@ html { scroll-behavior: smooth; }
     <section id="quick" class="quick" hidden>
       <label for="quick-input" class="quick-label">Karte aus dem Stream nachschlagen</label>
       <input id="quick-input" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
-        placeholder="Name oder Nummer, z. B. Glurak 199 oder 199/165">
-      <p class="quick-hint" id="quick-hint">Sucht in allen Karten der letzten fünf Jahre, auf Deutsch oder Englisch. Kartennummer oder Set-Name können mit rein.</p>
+        placeholder="z. B. Dragonite deutsch oder Glurak japanisch">
+      <p class="quick-hint" id="quick-hint">Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.</p>
       <div id="quick-results" class="quick-results"></div>
     </section>
     <p class="note">Die 30 teuersten Karten jedes Haupt- und Spezialsets der letzten fünf Jahre, sortiert nach dem 30-Tage-Durchschnittspreis auf Cardmarket. „Trend“ vergleicht den 7-Tage- mit dem 30-Tage-Schnitt: grün heißt, die Karte wurde zuletzt teurer verkauft. Die Preise gelten für alle Sprachversionen zusammen.</p>
@@ -383,66 +387,148 @@ function render() {
 }
 
 // ---------- Schnellsuche über alle Karten ----------
-let quickData = null;
+// Eingabe: Pokémon-Name in beliebiger Sprache + optional Sprache, z. B. "Dragonite deutsch".
+let quickData = null;     // { sets, cards } international + asiatisch zusammengeführt
 let quickLoading = null;
+let asiaState = "idle";   // idle | loading | ready | missing
+let speciesAlias = new Map(); // gefalteter Name -> Pokémon-Nummer
+let speciesLabel = new Map(); // Nummer -> { de, en, ja, ko, zh }
 
-const fold = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-'’.]/g, " ");
+const fold = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[-'’.:]/g, " ").replace(/\s+/g, " ").trim();
 const normNo = (no) => String(no ?? "").toUpperCase().replace(/^([A-Z]*)0+(?=\d)/, "$1");
+
+// Sprach-Wörter in der Suche
+const LANG_WORDS = {
+  de: ["deutsch", "deutsche", "german", "ger", "de", "deu", "dt"],
+  en: ["englisch", "englische", "english", "eng", "en"],
+  ja: ["japanisch", "japanische", "japanese", "japan", "jap", "jp", "ja", "jpn"],
+  ko: ["koreanisch", "koreanische", "korean", "kor", "kr", "ko"],
+  zh: ["chinesisch", "chinesische", "chinese", "china", "chi", "cn", "zh", "tw"],
+};
+const LANG_OF = new Map(Object.entries(LANG_WORDS).flatMap(([k, ws]) => ws.map((w) => [w, k])));
+const LANG_LABEL = { de: "Deutsch", en: "Englisch", ja: "Japanisch", ko: "Koreanisch", zh: "Chinesisch" };
+const BADGE = { intl: "DE/EN", ja: "JP", ko: "KR", "zh-tw": "CN", "zh-cn": "CN" };
+const groupOf = (c) => (c.L ? (c.L.startsWith("zh") ? "zh" : c.L) : "intl");
+
+function indexCards(cards) {
+  for (const c of cards) c._hay = fold(`${c.n} ${c.e ?? ""}`);
+}
+
+async function loadQuick() {
+  const [all, species] = await Promise.all([
+    fetch("data/all.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : Promise.reject())),
+    fetch("data/species.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+  ]);
+  for (const [id, aliases, label] of species) {
+    speciesLabel.set(id, label);
+    for (const a of aliases) if (!speciesAlias.has(a)) speciesAlias.set(a, id);
+  }
+  indexCards(all.cards);
+  for (const st of all.sets) st._hay = fold(st.name);
+  quickData = all;
+  // Asiatische Karten im Hintergrund nachladen
+  asiaState = "loading";
+  fetch("data/asia.json", { cache: "no-cache" })
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((asia) => {
+      const off = quickData.sets.length;
+      for (const st of asia.sets) { st._hay = fold(st.name); quickData.sets.push(st); }
+      for (const c of asia.cards) c.s += off;
+      indexCards(asia.cards);
+      quickData.cards.push(...asia.cards);
+      asiaState = "ready";
+    })
+    .catch(() => { asiaState = "missing"; })
+    .finally(() => { updateQuickHint(); renderQuick(); });
+}
+
+function updateQuickHint() {
+  if (!quickData) return;
+  const n = quickData.cards.length.toLocaleString("de-DE");
+  const extra = asiaState === "loading" ? " Japanische, koreanische und chinesische Karten werden noch geladen …" : "";
+  document.getElementById("quick-hint").textContent =
+    `${n} Karten. Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.${extra}`;
+}
 
 async function openQuick() {
   const input = document.getElementById("quick-input");
   if (!quickData) {
     document.getElementById("quick-results").innerHTML = '<div class="status">Kartendaten werden geladen …</div>';
-    quickLoading ??= fetch("data/all.json", { cache: "no-cache" })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d) => {
-        for (const c of d.cards) c._hay = fold(`${c.n} ${c.e ?? ""}`);
-        for (const s of d.sets) s._hay = fold(s.name);
-        quickData = d;
-      })
-      .catch(() => { quickLoading = null; });
+    quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
     await quickLoading;
     if (!quickData) {
       document.getElementById("quick-results").innerHTML = '<div class="status">Die Kartendaten sind noch nicht da. Sie entstehen beim nächsten täglichen Lauf.</div>';
       return;
     }
-    document.getElementById("quick-hint").textContent =
-      `${quickData.cards.length.toLocaleString("de-DE")} Karten aus ${quickData.sets.length} Sets, davon ${quickData.cards.filter((c) => c.a30).length.toLocaleString("de-DE")} mit Cardmarket-Preis. Name auf Deutsch oder Englisch, Nummer und Set-Name können mit rein.`;
+    updateQuickHint();
   }
   renderQuick();
   try { input.focus({ preventScroll: true }); } catch {}
 }
 
-function quickSearch(query) {
-  const tokens = fold(query).split(/\s+/).filter(Boolean);
-  if (!tokens.length) return [];
-  const nameTokens = [];
-  let num = null, total = null;
-  for (const t of tokens) {
-    const m = /^#?([a-z]{0,3}\d+[a-z]?)(?:\/(\d+))?$/i.exec(t);
-    if (m && /\d/.test(t) && num == null) { num = normNo(m[1]); total = m[2] ? Number(m[2]) : null; }
-    else nameTokens.push(t);
+// Zerlegt die Eingabe in Sprache, Pokémon, Nummer und restliche Wörter.
+function parseQuery(query) {
+  let tokens = fold(query).split(" ").filter(Boolean);
+  let lang = null;
+  tokens = tokens.filter((t) => {
+    const l = LANG_OF.get(t);
+    if (l && !lang) { lang = l; return false; }
+    return true;
+  });
+  // Pokémon-Namen erkennen (auch zweiteilige wie "Mr Mime" oder "Tapu Koko")
+  const species = new Set();
+  const rest = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const two = i + 1 < tokens.length ? `${tokens[i]} ${tokens[i + 1]}` : null;
+    if (two && speciesAlias.has(two)) { species.add(speciesAlias.get(two)); i++; continue; }
+    if (speciesAlias.has(tokens[i])) { species.add(speciesAlias.get(tokens[i])); continue; }
+    // Zusammengeschriebene asiatische Eingabe wie "リザードンex"
+    if (/[^\x00-ɏ]/.test(tokens[i])) {
+      let hit = null;
+      for (const [alias, id] of speciesAlias) if (alias.length > 1 && tokens[i].includes(alias) && (!hit || alias.length > hit[0].length)) hit = [alias, id];
+      if (hit) { species.add(hit[1]); const r = tokens[i].replace(hit[0], "").trim(); if (r) rest.push(r); continue; }
+    }
+    rest.push(tokens[i]);
   }
+  let num = null, total = null;
+  const words = [];
+  for (const t of rest) {
+    const m = /^#?([a-z]{0,3}\d+[a-z]?)(?:\/(\d+))?$/i.exec(t);
+    if (m && num == null) { num = normNo(m[1]); total = m[2] ? Number(m[2]) : null; }
+    else words.push(t);
+  }
+  return { lang, species: [...species], num, total, words };
+}
+
+function quickSearch(query) {
+  const q = parseQuery(query);
+  if (!q.species.length && !q.words.length && q.num == null) return { q, list: [] };
+  const wantGroup = q.lang === "de" || q.lang === "en" ? "intl" : q.lang;
   const hits = [];
   for (const c of quickData.cards) {
+    if (wantGroup && groupOf(c) !== wantGroup) continue;
     const set = quickData.sets[c.s];
     let score = 0;
-    if (num != null) {
-      const sameNo = normNo(c.no) === num;
+    if (q.species.length) {
+      if (!c.p || !q.species.every((id) => c.p.includes(id))) continue;
+      score += 10;
+    }
+    if (q.num != null) {
+      const sameNo = normNo(c.no) === q.num;
       if (sameNo) score += 10;
-      else if (!set._hay.includes(num.toLowerCase())) continue; // Zahl kann auch Teil des Set-Namens sein (z. B. 151)
-      if (total != null) { if (sameNo && set.off === total) score += 5; else if (sameNo) score -= 3; }
+      else if (!set._hay.includes(q.num.toLowerCase())) continue;
+      if (q.total != null && sameNo && set.off === q.total) score += 5;
     }
     let ok = true;
-    for (const t of nameTokens) {
-      if (c._hay.includes(t)) score += c._hay.split(" ").includes(t) ? 3 : 2;
-      else if (set._hay.includes(t)) score += 1;
+    for (const t of q.words) {
+      if (c._hay.includes(t)) score += 2;
+      else if (set._hay.includes(t) || fold(c.r).includes(t)) score += 1;
       else { ok = false; break; }
     }
     if (ok) hits.push([score, c]);
   }
   hits.sort((a, b) => b[0] - a[0] || (b[1].a30 ?? -1) - (a[1].a30 ?? -1));
-  return hits.slice(0, 40).map((h) => h[1]);
+  return { q, list: hits.slice(0, 40).map((h) => h[1]), total: hits.length };
 }
 
 function priceCell(label, v, key = false) {
@@ -451,15 +537,30 @@ function priceCell(label, v, key = false) {
 
 function renderQuick() {
   if (!quickData) return;
-  const q = document.getElementById("quick-input").value.trim();
+  const input = document.getElementById("quick-input").value.trim();
   const box = document.getElementById("quick-results");
-  if (!q) { box.innerHTML = ""; return; }
-  const list = quickSearch(q);
-  if (!list.length) { box.innerHTML = '<div class="status">Keine Karte gefunden. Anderen Namen oder nur die Nummer versuchen.</div>'; return; }
-  box.innerHTML = list.map((c) => {
+  if (!input) { box.innerHTML = ""; return; }
+  const { q, list, total } = quickSearch(input);
+  const wantAsia = q.lang === "ja" || q.lang === "ko" || q.lang === "zh";
+  if (!list.length) {
+    const msg = wantAsia && asiaState === "loading"
+      ? "Die asiatischen Karten werden noch geladen, einen Moment …"
+      : wantAsia && asiaState === "missing"
+        ? "Die asiatischen Karten sind noch nicht da. Sie entstehen beim nächsten täglichen Lauf."
+        : "Keine Karte gefunden. Anderen Namen oder nur die Nummer versuchen.";
+    box.innerHTML = `<div class="status">${msg}</div>`;
+    return;
+  }
+  const who = q.species.map((id) => speciesLabel.get(id)?.de ?? speciesLabel.get(id)?.en).filter(Boolean).join(" + ");
+  const summary = `<p class="quick-hint">${total > list.length ? `Die ${list.length} teuersten von ${total} Treffern` : `${total} Treffer`}${who ? ` für <b>${esc(who)}</b>` : ""}${q.lang ? ` · ${LANG_LABEL[q.lang]}` : " · alle Sprachen"}${q.lang === "de" || q.lang === "en" ? " · Cardmarket-Preis gilt für alle europäischen Sprachen zusammen" : ""}</p>`;
+  box.innerHTML = summary + list.map((c) => {
     const set = quickData.sets[c.s];
+    const g = groupOf(c);
+    const showEn = q.lang === "en" && c.e;
+    const title = showEn ? c.e : c.n;
+    const sub = showEn ? c.n : g === "intl" ? c.e : c.p?.length ? speciesLabel.get(c.p[0])?.de : null;
     const img = c.img
-      ? `<a href="${esc(c.big ?? c.img)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(c.n)}"><img loading="lazy" src="${esc(c.img)}" alt="${esc(c.n)}"></a>`
+      ? `<a href="${esc(c.big ?? c.img)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(title)}"><img loading="lazy" src="${esc(c.img)}" alt="${esc(title)}"></a>`
       : '<span class="no-img">?</span>';
     const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}`;
     const meta = [esc(set.name), no, c.r ? esc(c.r) : "", c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
@@ -471,7 +572,7 @@ function renderQuick() {
       : '<div class="qnone">Noch kein Cardmarket-Preis für diese Karte.</div>';
     return `<article class="qcard">${img}
       <div class="qbody">
-        <div class="qname">${esc(c.n)}${c.e ? ` <small>(${esc(c.e)})</small>` : ""}</div>
+        <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
         <div class="qmeta">${meta}</div>
         ${prices}
         <div class="qfoot">${c.a30 ? chip(pct(c.a7, c.a30)) : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a></div>

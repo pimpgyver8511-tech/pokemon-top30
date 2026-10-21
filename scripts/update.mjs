@@ -236,6 +236,136 @@ async function explainMissing(set) {
   }
 }
 
+// ---------- Schnellsuche: Pokémon-Namen in allen Sprachen ----------
+const SPECIES_CSV =
+  process.env.SPECIES_CSV ?? "https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/pokemon_species_names.csv";
+// PokeAPI-Sprach-IDs: 1 ja-Kana, 2 Romaji, 3 ko, 4 zh-Hant, 5 fr, 6 de, 7 es, 8 it, 9 en, 11 ja, 12 zh-Hans
+const CARD_LANG_IDS = { de: [6, 9], en: [9], ja: [1, 11, 9], ko: [3, 9], "zh-tw": [4, 12, 9], "zh-cn": [12, 4, 9] };
+
+const foldName = (t) =>
+  String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-'’.:]/g, " ").replace(/\s+/g, " ").trim();
+
+function parseCsvLine(line) {
+  const out = [];
+  let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+async function loadSpecies() {
+  try {
+    const res = await fetch(SPECIES_CSV, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const byId = new Map(); // id -> Map(langId -> name)
+    for (const line of (await res.text()).split("\n").slice(1)) {
+      if (!line.trim()) continue;
+      const [id, lang, name] = parseCsvLine(line);
+      if (!name) continue;
+      if (!byId.has(+id)) byId.set(+id, new Map());
+      byId.get(+id).set(+lang, name);
+    }
+    console.log(`Pokémon-Namen: ${byId.size} Arten`);
+    return byId;
+  } catch (err) {
+    console.warn(`Pokémon-Namensliste nicht geladen: ${err.message}`);
+    return null;
+  }
+}
+
+// Liefert eine Funktion, die zu einem Kartennamen die enthaltenen Pokémon-Arten findet.
+function makeSpeciesTagger(species) {
+  if (!species) return () => [];
+  const byLang = new Map(); // langId -> [[foldedName, id]]
+  for (const [id, names] of species) {
+    for (const [lang, name] of names) {
+      const f = foldName(name);
+      if (f.length < 2) continue;
+      if (!byLang.has(lang)) byLang.set(lang, []);
+      byLang.get(lang).push([f, id]);
+    }
+  }
+  for (const list of byLang.values()) list.sort((a, b) => b[0].length - a[0].length); // längste zuerst
+  const isWord = (ch) => ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+  const latin = (t) => /^[\x00-\u024f\s]+$/.test(t);
+  return (cardName, cardLang) => {
+    let rest = foldName(cardName);
+    const found = new Set();
+    for (const lang of CARD_LANG_IDS[cardLang] ?? [9]) {
+      for (const [name, id] of byLang.get(lang) ?? []) {
+        let at = rest.indexOf(name);
+        while (at !== -1) {
+          const needsBoundary = latin(name);
+          if (!needsBoundary || (!isWord(rest[at - 1]) && !isWord(rest[at + name.length]))) {
+            found.add(id);
+            rest = rest.slice(0, at) + " ".repeat(name.length) + rest.slice(at + name.length);
+            break;
+          }
+          at = rest.indexOf(name, at + 1);
+        }
+      }
+    }
+    return [...found];
+  };
+}
+
+function speciesIndex(species) {
+  if (!species) return [];
+  const out = [];
+  for (const [id, names] of species) {
+    const aliases = [...new Set([...names.values()].map(foldName).filter(Boolean))];
+    const label = { de: names.get(6), en: names.get(9), ja: names.get(11) ?? names.get(1), ko: names.get(3), zh: names.get(4) ?? names.get(12) };
+    out.push([id, aliases, label]);
+  }
+  return out;
+}
+
+// ---------- Schnellsuche: japanische, koreanische und chinesische Karten ----------
+const ASIA_LANGS = ["ja", "ko", "zh-tw", "zh-cn"];
+
+async function buildAsia(lang, setOffset, tag) {
+  const sets = [];
+  const cards = [];
+  try {
+    const list = (await getJson(`${API}/${lang}/sets`)) ?? [];
+    const details = await mapLimit(list, CONCURRENCY, (s) => getJson(`${API}/${lang}/sets/${encodeURIComponent(s.id)}`));
+    const wanted = details.filter((d) => d?.releaseDate && d.releaseDate >= cutoffIso && d.cards?.length);
+    for (const set of wanted) {
+      const si = setOffset + sets.length;
+      sets.push({ id: `${lang}:${set.id}`, name: set.name, off: set.cardCount?.official ?? null, date: set.releaseDate, L: lang });
+      const rows = await mapLimit(set.cards, 8, async (brief) => {
+        const card = (await getJson(`${API}/${lang}/cards/${encodeURIComponent(brief.id)}`)) ?? brief;
+        const price = pickPrice(card.pricing?.cardmarket);
+        const row = { i: `${lang}:${card.id}`, n: card.name, no: card.localId, s: si, L: lang };
+        const p = tag(card.name, lang);
+        if (p.length) row.p = p;
+        if (card.rarity) row.r = card.rarity;
+        if (price && isNum(price.avg30)) Object.assign(row, { a1: price.avg1, a7: price.avg7, a30: price.avg30, t: price.trend, lo: price.low });
+        if (price?.variant) row.v = price.variant;
+        const img = card.image ?? brief.image;
+        if (img) { row.img = `${img}/low.webp`; row.big = `${img}/high.webp`; }
+        row.u = cardmarketUrl(card.pricing?.cardmarket?.idProduct, card.name);
+        for (const k of Object.keys(row)) if (row[k] == null) delete row[k];
+        return row;
+      });
+      cards.push(...rows.filter(Boolean));
+    }
+    console.log(`Asiatisch ${lang}: ${sets.length} Sets, ${cards.length} Karten, ${cards.filter((c) => c.a30).length} mit Preis`);
+  } catch (err) {
+    console.warn(`Asiatisch ${lang} übersprungen: ${err.message}`);
+  }
+  return { sets, cards };
+}
+
 async function main() {
   const sets = await loadSets();
   if (sets.length === 0) throw new Error("Keine Sets gefunden – API-Antwort prüfen");
@@ -285,12 +415,16 @@ async function main() {
   );
 
   // Schnellsuche: alle Karten (auch ohne Preis) in kompakter Form.
+  const species = await loadSpecies();
+  const tag = makeSpeciesTagger(species);
   const searchSets = allSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate }));
   const searchCards = [];
   allSets.forEach((s, si) => {
     for (const c of s.allCards) {
       const row = { i: c.id, n: c.name, no: c.no, s: si };
       if (c.enName) row.e = c.enName;
+      const p = [...new Set([...tag(c.name, "de"), ...(c.enName ? tag(c.enName, "en") : [])])];
+      if (p.length) row.p = p;
       if (c.rarity) row.r = c.rarity;
       if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
       if (c.variant) row.v = c.variant;
@@ -306,6 +440,17 @@ async function main() {
     JSON.stringify({ updated: now.toISOString(), sets: searchSets, cards: searchCards }),
   );
   console.log(`Schnellsuche: ${searchCards.length} Karten, davon ${searchCards.filter((c) => c.a30).length} mit Preis`);
+  console.log(`  davon mit erkanntem Pokémon: ${searchCards.filter((c) => c.p).length}`);
+  await writeFile(path.join(OUT_DIR, "species.json"), JSON.stringify(speciesIndex(species)));
+
+  const asia = { updated: now.toISOString(), sets: [], cards: [] };
+  for (const lang of ASIA_LANGS) {
+    const part = await buildAsia(lang, asia.sets.length, tag);
+    asia.sets.push(...part.sets);
+    asia.cards.push(...part.cards);
+  }
+  await writeFile(path.join(OUT_DIR, "asia.json"), JSON.stringify(asia));
+  console.log(`Asiatische Karten gesamt: ${asia.cards.length}, mit Pokémon erkannt: ${asia.cards.filter((c) => c.p).length}`);
 
   // Kompakter Tages-Snapshot für Trends: { kartenId: [avg7, avg30] }
   const snapshot = {};
