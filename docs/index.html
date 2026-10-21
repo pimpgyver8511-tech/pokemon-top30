@@ -615,6 +615,8 @@ async function init() {
   document.getElementById("view-sets").addEventListener("click", () => setView("sets"));
   document.getElementById("view-all").addEventListener("click", () => setView("all"));
   document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
+  // Kartendaten für die Schnellsuche schon vorab im Hintergrund laden
+  setTimeout(() => { quickLoading ??= loadQuick().catch(() => { quickLoading = null; }); }, 1200);
   if (view !== "sets") setView(view);
   let qt;
   document.getElementById("quick-input").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(renderQuick, 120); });
