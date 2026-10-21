@@ -61,10 +61,15 @@ const round = (v) => (isNum(v) ? Math.round(v * 100) / 100 : null);
 function pickPrice(cm) {
   if (!cm) return null;
   if (isNum(cm.avg30) || isNum(cm.avg7)) {
-    return { avg7: round(cm.avg7), avg30: round(cm.avg30), trend: round(cm.trend), variant: null };
+    return {
+      avg1: round(cm.avg1), avg7: round(cm.avg7), avg30: round(cm.avg30),
+      trend: round(cm.trend), low: round(cm.low), variant: null,
+    };
   }
   if (isNum(cm["avg30-holo"]) || isNum(cm["avg7-holo"])) {
     return {
+      avg1: round(cm["avg1-holo"]),
+      low: round(cm["low-holo"]),
       avg7: round(cm["avg7-holo"]),
       avg30: round(cm["avg30-holo"]),
       trend: round(cm["trend-holo"]),
@@ -147,10 +152,16 @@ function pickPtcgPrice(c) {
   const p = c?.cardmarket?.prices;
   if (!p) return null;
   if (isNum(p.avg30) || isNum(p.avg7)) {
-    return { avg7: round(p.avg7), avg30: round(p.avg30), trend: round(p.trendPrice), variant: null };
+    return {
+      avg1: round(p.avg1), avg7: round(p.avg7), avg30: round(p.avg30),
+      trend: round(p.trendPrice), low: round(p.lowPrice), variant: null,
+    };
   }
   if (isNum(p.reverseHoloAvg30)) {
-    return { avg7: round(p.reverseHoloAvg7), avg30: round(p.reverseHoloAvg30), trend: round(p.reverseHoloTrend), variant: "Reverse Holo" };
+    return {
+      avg1: round(p.reverseHoloAvg1), avg7: round(p.reverseHoloAvg7), avg30: round(p.reverseHoloAvg30),
+      trend: round(p.reverseHoloTrend), low: round(p.reverseHoloLow), variant: "Reverse Holo",
+    };
   }
   return null;
 }
@@ -163,9 +174,12 @@ async function buildSet(set, fallback = null) {
     let price = pickPrice(card.pricing?.cardmarket);
     let idProduct = card.pricing?.cardmarket?.idProduct;
     let image = card.image ?? brief.image;
-    // Preise/Bild fehlen manchmal nur in der deutschen Variante.
-    if ((!price || !image) && res?.lang === "de") {
+    // Englische Variante: für den englischen Namen (Schnellsuche) und falls
+    // Preise/Bild nur in der deutschen Variante fehlen.
+    let enName = null;
+    if (res?.lang === "de") {
       const en = await getJson(`${API}/en/cards/${encodeURIComponent(brief.id)}`);
+      enName = en?.name ?? null;
       price ??= pickPrice(en?.pricing?.cardmarket);
       idProduct ??= en?.pricing?.cardmarket?.idProduct;
       image ??= en?.image;
@@ -176,25 +190,28 @@ async function buildSet(set, fallback = null) {
       price = pickPtcgPrice(alt);
       if (alt.cardmarket?.url) url = alt.cardmarket.url;
     }
-    if (!price || !isNum(price.avg30)) return null;
     let imgs = imageUrls(image, card.id);
     if (!imgs && alt?.images?.small) imgs = { thumb: alt.images.small, large: alt.images.large ?? alt.images.small };
+    const hasPrice = Boolean(price && isNum(price.avg30));
     return {
+      hasPrice,
+      enName: enName && enName !== card.name ? enName : null,
       id: card.id,
       no: card.localId,
       name: card.name,
       rarity: card.rarity ?? null,
       thumb: imgs?.thumb ?? null,
       large: imgs?.large ?? null,
-      ...price,
+      ...(price ?? {}),
       url,
     };
   });
-  const top = cards
-    .filter(Boolean)
+  const priced = cards.filter((c) => c?.hasPrice);
+  const top = priced
     .sort((a, b) => b.avg30 - a.avg30)
-    .slice(0, TOP_N);
-  console.log(`${set.name} (${set.id}): ${cards.filter(Boolean).length} Karten mit Preis, Top ${top.length}`);
+    .slice(0, TOP_N)
+    .map(({ hasPrice, enName, avg1, low, ...c }) => c);
+  console.log(`${set.name} (${set.id}): ${priced.length} Karten mit Preis, Top ${top.length}`);
   return {
     id: set.id,
     name: set.name,
@@ -202,6 +219,8 @@ async function buildSet(set, fallback = null) {
     releaseDate: set.releaseDate,
     logo: set.logo ?? null,
     cards: top,
+    allCards: cards.filter(Boolean),
+    official: set.cardCount?.official ?? null,
   };
 }
 
@@ -232,6 +251,7 @@ async function main() {
   console.log(`${mainSets.length} Sets seit ${cutoffIso}`);
 
   const result = [];
+  const allSets = [];
   for (const set of mainSets) {
     let built = await buildSet(set);
     if (!built.cards.length) {
@@ -239,11 +259,13 @@ async function main() {
       const fallback = await pokemontcgPrices(set);
       if (fallback?.size) built = await buildSet(set, fallback);
     }
+    allSets.push(built);
     if (built.cards.length) result.push(built);
     else {
       // Set trotzdem anzeigen, mit Hinweis "Preise folgen"
       console.warn(`${set.name} (${set.id}): noch keine Preise – wird mit Hinweis angezeigt`);
       await explainMissing(set);
+      allSets[allSets.length - 1] = { ...built, pending: true };
       result.push({ ...built, pending: true, cardTotal: (set.cards?.length ?? 0) + (set.extraCards?.length ?? 0) });
     }
   }
@@ -255,8 +277,35 @@ async function main() {
   await mkdir(path.join(OUT_DIR, "history"), { recursive: true });
   await writeFile(
     path.join(OUT_DIR, "latest.json"),
-    JSON.stringify({ updated: now.toISOString(), source: "TCGdex / Cardmarket", sets: result }),
+    JSON.stringify({
+      updated: now.toISOString(),
+      source: "TCGdex / Cardmarket",
+      sets: result.map(({ allCards, official, ...s }) => s),
+    }),
   );
+
+  // Schnellsuche: alle Karten (auch ohne Preis) in kompakter Form.
+  const searchSets = allSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate }));
+  const searchCards = [];
+  allSets.forEach((s, si) => {
+    for (const c of s.allCards) {
+      const row = { i: c.id, n: c.name, no: c.no, s: si };
+      if (c.enName) row.e = c.enName;
+      if (c.rarity) row.r = c.rarity;
+      if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
+      if (c.variant) row.v = c.variant;
+      if (c.thumb) row.img = c.thumb;
+      if (c.large && c.large !== c.thumb) row.big = c.large;
+      row.u = c.url;
+      for (const k of Object.keys(row)) if (row[k] == null) delete row[k];
+      searchCards.push(row);
+    }
+  });
+  await writeFile(
+    path.join(OUT_DIR, "all.json"),
+    JSON.stringify({ updated: now.toISOString(), sets: searchSets, cards: searchCards }),
+  );
+  console.log(`Schnellsuche: ${searchCards.length} Karten, davon ${searchCards.filter((c) => c.a30).length} mit Preis`);
 
   // Kompakter Tages-Snapshot für Trends: { kartenId: [avg7, avg30] }
   const snapshot = {};

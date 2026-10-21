@@ -129,6 +129,31 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   justify-self: center; font: inherit; font-weight: 700; padding: 9px 16px; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--accent); background: var(--surface); color: var(--accent);
 }
+.quick { display: grid; gap: 10px; }
+.quick-label { font-family: var(--font-display); font-weight: 700; font-stretch: 112%; font-size: 1.15rem; }
+#quick-input {
+  width: 100%; font: inherit; font-size: 1.15rem; padding: 12px 14px; border-radius: 8px;
+  border: 2px solid var(--accent); background: var(--surface); color: var(--ink);
+}
+.quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
+.quick-results { display: grid; gap: 10px; }
+.qcard {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+}
+.qcard img, .qcard .no-img { width: 84px; aspect-ratio: 245 / 342; border-radius: 4px; display: block; background: var(--line); }
+.qcard .no-img { display: grid; place-items: center; color: var(--muted); font-weight: 700; }
+.qbody { display: grid; gap: 6px; min-width: 0; }
+.qname { font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
+.qname small { font-weight: 400; color: var(--muted); font-size: .8rem; }
+.qmeta { color: var(--muted); font-size: .8rem; }
+.qprices { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 6px; font-variant-numeric: tabular-nums; }
+.qprice { background: var(--bg); border-radius: 6px; padding: 5px 7px; }
+.qprice span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.qprice b { font-size: .98rem; }
+.qprice.key { outline: 2px solid var(--foil); }
+.qnone { color: var(--muted); font-size: .9rem; }
+.qfoot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sort-btn {
   all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
   font: inherit; color: var(--muted); text-transform: inherit; letter-spacing: inherit; white-space: nowrap;
@@ -166,6 +191,7 @@ html { scroll-behavior: smooth; }
       <div class="view-toggle" role="group" aria-label="Ansicht">
         <button type="button" id="view-sets" aria-pressed="true">Nach Set</button>
         <button type="button" id="view-all" aria-pressed="false">Alle Sets zusammen</button>
+        <button type="button" id="view-quick" aria-pressed="false">Schnellsuche</button>
       </div>
     </div>
   </div>
@@ -173,6 +199,13 @@ html { scroll-behavior: smooth; }
 
 <div class="wrap">
   <main id="main">
+    <section id="quick" class="quick" hidden>
+      <label for="quick-input" class="quick-label">Karte aus dem Stream nachschlagen</label>
+      <input id="quick-input" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
+        placeholder="Name oder Nummer, z. B. Glurak 199 oder 199/165">
+      <p class="quick-hint" id="quick-hint">Sucht in allen Karten der letzten fünf Jahre, auf Deutsch oder Englisch. Kartennummer oder Set-Name können mit rein.</p>
+      <div id="quick-results" class="quick-results"></div>
+    </section>
     <p class="note">Die 30 teuersten Karten jedes Haupt- und Spezialsets der letzten fünf Jahre, sortiert nach dem 30-Tage-Durchschnittspreis auf Cardmarket. „Trend“ vergleicht den 7-Tage- mit dem 30-Tage-Schnitt: grün heißt, die Karte wurde zuletzt teurer verkauft. Die Preise gelten für alle Sprachversionen zusammen.</p>
     <div id="movers" class="movers" hidden></div>
     <div id="sets"><div class="status">Preise werden geladen …</div></div>
@@ -289,7 +322,7 @@ function drawMovers(show) {
 }
 
 // Ansicht: "sets" = eine Tabelle pro Set, "all" = eine Gesamtrangliste über alle Sets
-let view = location.hash === "#rangliste" ? "all" : "sets";
+let view = location.hash === "#rangliste" ? "all" : location.hash === "#suche" ? "quick" : "sets";
 const PAGE = 100;
 let shown = PAGE;
 
@@ -314,6 +347,14 @@ function renderAll(setId, q) {
 function render() {
   const setId = document.getElementById("set-filter").value;
   const q = document.getElementById("search").value.trim().toLowerCase();
+  const quick = view === "quick";
+  for (const id of ["movers", "sets"]) if (quick) document.getElementById(id).hidden = true;
+  document.querySelector("main .note").hidden = quick;
+  document.getElementById("sets").hidden = quick;
+  document.getElementById("quick").hidden = !quick;
+  document.getElementById("set-filter").hidden = quick;
+  document.getElementById("search").hidden = quick;
+  if (quick) return openQuick();
   if (view === "all") return renderAll(setId, q);
   const out = [];
   for (const s of data.sets) {
@@ -341,6 +382,104 @@ function render() {
   drawMovers(!setId && !q);
 }
 
+// ---------- Schnellsuche über alle Karten ----------
+let quickData = null;
+let quickLoading = null;
+
+const fold = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-'’.]/g, " ");
+const normNo = (no) => String(no ?? "").toUpperCase().replace(/^([A-Z]*)0+(?=\d)/, "$1");
+
+async function openQuick() {
+  const input = document.getElementById("quick-input");
+  if (!quickData) {
+    document.getElementById("quick-results").innerHTML = '<div class="status">Kartendaten werden geladen …</div>';
+    quickLoading ??= fetch("data/all.json", { cache: "no-cache" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        for (const c of d.cards) c._hay = fold(`${c.n} ${c.e ?? ""}`);
+        for (const s of d.sets) s._hay = fold(s.name);
+        quickData = d;
+      })
+      .catch(() => { quickLoading = null; });
+    await quickLoading;
+    if (!quickData) {
+      document.getElementById("quick-results").innerHTML = '<div class="status">Die Kartendaten sind noch nicht da. Sie entstehen beim nächsten täglichen Lauf.</div>';
+      return;
+    }
+    document.getElementById("quick-hint").textContent =
+      `${quickData.cards.length.toLocaleString("de-DE")} Karten aus ${quickData.sets.length} Sets, davon ${quickData.cards.filter((c) => c.a30).length.toLocaleString("de-DE")} mit Cardmarket-Preis. Name auf Deutsch oder Englisch, Nummer und Set-Name können mit rein.`;
+  }
+  renderQuick();
+  try { input.focus({ preventScroll: true }); } catch {}
+}
+
+function quickSearch(query) {
+  const tokens = fold(query).split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+  const nameTokens = [];
+  let num = null, total = null;
+  for (const t of tokens) {
+    const m = /^#?([a-z]{0,3}\d+[a-z]?)(?:\/(\d+))?$/i.exec(t);
+    if (m && /\d/.test(t) && num == null) { num = normNo(m[1]); total = m[2] ? Number(m[2]) : null; }
+    else nameTokens.push(t);
+  }
+  const hits = [];
+  for (const c of quickData.cards) {
+    const set = quickData.sets[c.s];
+    let score = 0;
+    if (num != null) {
+      const sameNo = normNo(c.no) === num;
+      if (sameNo) score += 10;
+      else if (!set._hay.includes(num.toLowerCase())) continue; // Zahl kann auch Teil des Set-Namens sein (z. B. 151)
+      if (total != null) { if (sameNo && set.off === total) score += 5; else if (sameNo) score -= 3; }
+    }
+    let ok = true;
+    for (const t of nameTokens) {
+      if (c._hay.includes(t)) score += c._hay.split(" ").includes(t) ? 3 : 2;
+      else if (set._hay.includes(t)) score += 1;
+      else { ok = false; break; }
+    }
+    if (ok) hits.push([score, c]);
+  }
+  hits.sort((a, b) => b[0] - a[0] || (b[1].a30 ?? -1) - (a[1].a30 ?? -1));
+  return hits.slice(0, 40).map((h) => h[1]);
+}
+
+function priceCell(label, v, key = false) {
+  return `<div class="qprice${key ? " key" : ""}"><span>${label}</span><b>${fmtPrice(v ?? null)}</b></div>`;
+}
+
+function renderQuick() {
+  if (!quickData) return;
+  const q = document.getElementById("quick-input").value.trim();
+  const box = document.getElementById("quick-results");
+  if (!q) { box.innerHTML = ""; return; }
+  const list = quickSearch(q);
+  if (!list.length) { box.innerHTML = '<div class="status">Keine Karte gefunden. Anderen Namen oder nur die Nummer versuchen.</div>'; return; }
+  box.innerHTML = list.map((c) => {
+    const set = quickData.sets[c.s];
+    const img = c.img
+      ? `<a href="${esc(c.big ?? c.img)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(c.n)}"><img loading="lazy" src="${esc(c.img)}" alt="${esc(c.n)}"></a>`
+      : '<span class="no-img">?</span>';
+    const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}`;
+    const meta = [esc(set.name), no, c.r ? esc(c.r) : "", c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
+    const prices = c.a30
+      ? `<div class="qprices">
+          ${priceCell("Ø 1 Tag", c.a1)}${priceCell("Ø 7 Tage", c.a7, true)}${priceCell("Ø 30 Tage", c.a30, true)}
+          ${priceCell("Trend", c.t)}${priceCell("Ab", c.lo)}
+        </div>`
+      : '<div class="qnone">Noch kein Cardmarket-Preis für diese Karte.</div>';
+    return `<article class="qcard">${img}
+      <div class="qbody">
+        <div class="qname">${esc(c.n)}${c.e ? ` <small>(${esc(c.e)})</small>` : ""}</div>
+        <div class="qmeta">${meta}</div>
+        ${prices}
+        <div class="qfoot">${c.a30 ? chip(pct(c.a7, c.a30)) : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a></div>
+      </div>
+    </article>`;
+  }).join("");
+}
+
 const pricedSets = () => data.sets.filter((s) => !s.pending);
 
 async function init() {
@@ -366,13 +505,18 @@ async function init() {
     view = v; shown = PAGE;
     document.getElementById("view-sets").setAttribute("aria-pressed", String(v === "sets"));
     document.getElementById("view-all").setAttribute("aria-pressed", String(v === "all"));
-    try { history.replaceState(null, "", v === "all" ? "#rangliste" : location.pathname + location.search); } catch {}
+    document.getElementById("view-quick").setAttribute("aria-pressed", String(v === "quick"));
+    const hash = { all: "#rangliste", quick: "#suche" }[v];
+    try { history.replaceState(null, "", hash ?? location.pathname + location.search); } catch {}
     render();
     window.scrollTo(0, 0);
   };
   document.getElementById("view-sets").addEventListener("click", () => setView("sets"));
   document.getElementById("view-all").addEventListener("click", () => setView("all"));
-  if (view === "all") setView("all");
+  document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
+  if (view !== "sets") setView(view);
+  let qt;
+  document.getElementById("quick-input").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(renderQuick, 120); });
   document.getElementById("main").addEventListener("click", (e) => {
     if (e.target.closest("#more")) { shown += PAGE; render(); return; }
     const btn = e.target.closest("[data-sort]");
