@@ -135,6 +135,25 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   width: 100%; font: inherit; font-size: 1.15rem; padding: 12px 14px; border-radius: 8px;
   border: 2px solid var(--accent); background: var(--surface); color: var(--ink);
 }
+.listen { display: flex; flex-wrap: wrap; gap: 8px; }
+.listen-btn {
+  flex: 1 1 180px; font: inherit; font-weight: 700; font-size: 1rem; padding: 10px 14px; border-radius: 8px; cursor: pointer;
+  border: 0; background: var(--accent); color: var(--surface); display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.listen-btn[aria-pressed="true"] { background: var(--down); }
+.listen-btn[aria-pressed="true"]::before {
+  content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .listen-btn[aria-pressed="true"]::before { animation: none; } }
+#listen-lang { flex: 1 1 150px; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.listen-status { margin: 0; font-size: .88rem; color: var(--muted); }
+.listen-status b { color: var(--ink); }
+.listen-history { display: flex; flex-wrap: wrap; gap: 6px; }
+.listen-history button {
+  font: inherit; font-size: .85rem; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--foil); background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink);
+}
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
 .qcard {
@@ -147,7 +166,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .qname { font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
 .qname small { font-weight: 400; color: var(--muted); font-size: .8rem; }
 .qmeta { color: var(--muted); font-size: .8rem; }
-.qprices { display: grid; grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 6px; font-variant-numeric: tabular-nums; }
+.qprices { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; font-variant-numeric: tabular-nums; }
 .qprice { background: var(--bg); border-radius: 6px; padding: 5px 7px; }
 .qprice span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .qprice b { font-size: .98rem; }
@@ -205,6 +224,15 @@ html { scroll-behavior: smooth; }
   <main id="main">
     <section id="quick" class="quick" hidden>
       <label for="quick-input" class="quick-label">Karte aus dem Stream nachschlagen</label>
+      <div class="listen">
+        <button type="button" id="listen-btn" class="listen-btn" aria-pressed="false">Mithören starten</button>
+        <select id="listen-lang" aria-label="Sprache des Streams">
+          <option value="de-DE">Stream auf Deutsch</option>
+          <option value="en-US">Stream auf Englisch</option>
+        </select>
+      </div>
+      <p id="listen-status" class="listen-status" hidden></p>
+      <div id="listen-history" class="listen-history" hidden></div>
       <input id="quick-input" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
         placeholder="z. B. Dragonite deutsch oder Glurak japanisch">
       <p class="quick-hint" id="quick-hint">Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.</p>
@@ -405,6 +433,10 @@ const LANG_WORDS = {
   ko: ["koreanisch", "koreanische", "korean", "kor", "kr", "ko"],
   zh: ["chinesisch", "chinesische", "chinese", "china", "chi", "cn", "zh", "tw"],
 };
+// Gebeugte Formen ergänzen: japanisches, japanischen, deutscher …
+for (const ws of Object.values(LANG_WORDS)) {
+  for (const w of [...ws]) if (w.endsWith("isch")) ws.push(w + "es", w + "en", w + "er", w + "em");
+}
 const LANG_OF = new Map(Object.entries(LANG_WORDS).flatMap(([k, ws]) => ws.map((w) => [w, k])));
 const LANG_LABEL = { de: "Deutsch", en: "Englisch", ja: "Japanisch", ko: "Koreanisch", zh: "Chinesisch" };
 const BADGE = { intl: "DE/EN", ja: "JP", ko: "KR", "zh-tw": "CN", "zh-cn": "CN" };
@@ -563,7 +595,8 @@ function renderQuick() {
       ? `<a href="${esc(c.big ?? c.img)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(title)}"><img loading="lazy" src="${esc(c.img)}" alt="${esc(title)}"></a>`
       : '<span class="no-img">?</span>';
     const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}`;
-    const meta = [esc(set.name), no, c.r ? esc(c.r) : "", c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
+    const rarity = c.r && c.r !== "None" ? esc(c.r) : "";
+    const meta = [esc(set.name), no, rarity, c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
     const prices = c.a30
       ? `<div class="qprices">
           ${priceCell("Ø 1 Tag", c.a1)}${priceCell("Ø 7 Tage", c.a7, true)}${priceCell("Ø 30 Tage", c.a30, true)}
@@ -579,6 +612,136 @@ function renderQuick() {
       </div>
     </article>`;
   }).join("");
+}
+
+// ---------- Mithören: Spracherkennung startet die Suche automatisch ----------
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+let listening = false;
+let lastHit = { key: "", at: 0 };
+const heardHistory = [];
+
+// Für gesprochene Sprache nur eindeutige Sprachwörter (z. B. nicht "ja")
+const SPOKEN_LANG = new Map([...LANG_OF].filter(([w]) => w.length >= 6));
+
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      best = Math.min(best, cur[j]);
+    }
+    if (best > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+let latinAliases = null;
+function speciesFromSpeech(text) {
+  const tokens = fold(text).split(" ").filter(Boolean);
+  latinAliases ??= [...speciesAlias].filter(([a]) => /^[a-z ]+$/.test(a) && a.length >= 5);
+  const found = [];
+  let lang = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (SPOKEN_LANG.has(t)) { lang = SPOKEN_LANG.get(t); continue; }
+    const two = i + 1 < tokens.length ? `${t} ${tokens[i + 1]}` : null;
+    if (two && speciesAlias.has(two)) { found.push(speciesAlias.get(two)); i++; continue; }
+    if (speciesAlias.has(t) && t.length >= 3) { found.push(speciesAlias.get(t)); continue; }
+    // Ungenau verstandene Namen (z. B. "glurack" statt "glurak")
+    if (t.length >= 5) {
+      const max = t.length >= 8 ? 2 : 1;
+      let best = null;
+      for (const [a, id] of latinAliases) {
+        const d = editDistance(t, a, max);
+        if (d <= max && (!best || d < best[0])) best = [d, id];
+      }
+      if (best) found.push(best[1]);
+    }
+  }
+  return { ids: [...new Set(found)], lang };
+}
+
+function setListenStatus(html) {
+  const el = document.getElementById("listen-status");
+  el.hidden = !html;
+  el.innerHTML = html;
+}
+
+function showHeard(ids, lang) {
+  const id = ids[ids.length - 1]; // zuletzt genanntes Pokémon
+  const label = speciesLabel.get(id);
+  const name = label?.de ?? label?.en;
+  if (!name) return;
+  const key = `${id}|${lang ?? ""}`;
+  const now = Date.now();
+  if (key === lastHit.key && now - lastHit.at < 15000) return; // nicht ständig neu auslösen
+  lastHit = { key, at: now };
+  const query = lang ? `${name} ${LANG_WORDS[lang][0]}` : name;
+  document.getElementById("quick-input").value = query;
+  renderQuick();
+  if (!heardHistory.includes(query)) {
+    heardHistory.unshift(query);
+    heardHistory.length = Math.min(heardHistory.length, 6);
+  }
+  const hist = document.getElementById("listen-history");
+  hist.hidden = false;
+  hist.innerHTML = heardHistory.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("");
+}
+
+async function startListening() {
+  if (!Recognition) {
+    setListenStatus("Dein Browser unterstützt keine Spracherkennung. Am besten Chrome (Android) oder Safari (iPhone) verwenden.");
+    return;
+  }
+  quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+  await quickLoading;
+  const r = (rec = new Recognition());
+  rec.lang = document.getElementById("listen-lang").value;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 3;
+  rec.onresult = (e) => {
+    let text = "";
+    for (let i = Math.max(0, e.results.length - 3); i < e.results.length; i++) {
+      for (let k = 0; k < e.results[i].length; k++) text += " " + e.results[i][k].transcript;
+    }
+    const last = e.results[e.results.length - 1][0].transcript;
+    setListenStatus(`Höre zu … zuletzt verstanden: <b>${esc(last.trim().slice(-80))}</b>`);
+    const { ids, lang } = speciesFromSpeech(text);
+    if (ids.length) showHeard(ids, lang);
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      setListenStatus("Kein Zugriff aufs Mikrofon. Bitte in den Browser-Einstellungen für diese Seite erlauben.");
+      stopListening();
+    } else if (e.error !== "no-speech" && e.error !== "aborted") {
+      setListenStatus(`Spracherkennung meldet: ${esc(e.error)}. Versuche es weiter …`);
+    }
+  };
+  rec.onend = () => {
+    // Browser beenden die Erkennung nach Pausen von selbst: neu starten, solange "Mithören" an ist
+    if (listening && r === rec) setTimeout(() => { if (listening && r === rec) try { r.start(); } catch {} }, 250);
+  };
+  listening = true;
+  const btn = document.getElementById("listen-btn");
+  btn.setAttribute("aria-pressed", "true");
+  btn.textContent = "Mithören stoppen";
+  setListenStatus("Höre zu … sobald ein Pokémon-Name fällt, erscheint die Karte unten.");
+  try { await navigator.wakeLock?.request("screen"); } catch {}
+  try { rec.start(); } catch {}
+}
+
+function stopListening() {
+  listening = false;
+  try { rec?.stop(); } catch {}
+  const btn = document.getElementById("listen-btn");
+  btn.setAttribute("aria-pressed", "false");
+  btn.textContent = "Mithören starten";
 }
 
 const pricedSets = () => data.sets.filter((s) => !s.pending);
@@ -615,6 +778,14 @@ async function init() {
   document.getElementById("view-sets").addEventListener("click", () => setView("sets"));
   document.getElementById("view-all").addEventListener("click", () => setView("all"));
   document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
+  document.getElementById("listen-btn").addEventListener("click", () => (listening ? stopListening() : startListening()));
+  document.getElementById("listen-lang").addEventListener("change", () => { if (listening) { stopListening(); startListening(); } });
+  document.getElementById("listen-history").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-q]");
+    if (!b) return;
+    document.getElementById("quick-input").value = b.dataset.q;
+    renderQuick();
+  });
   // Kartendaten für die Schnellsuche schon vorab im Hintergrund laden
   setTimeout(() => { quickLoading ??= loadQuick().catch(() => { quickLoading = null; }); }, 1200);
   if (view !== "sets") setView(view);
