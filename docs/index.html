@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pokémon Top 30</title>
+<meta name="description" content="Die 30 wertvollsten Karten pro Pokémon-Set der letzten fünf Jahre mit Cardmarket-Preisen, täglich aktualisiert.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: Preisliste wie ein Sammelordner – Set-Kapitel untereinander, feste Kopfleiste mit Filter. */
+:root {
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --ink: #171a24;
+  --muted: #5d6475;
+  --line: #dde0e8;
+  --accent: #1f4fd1;
+  --foil: #f2c230;
+  --up: #12804a;
+  --down: #c23a2b;
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12141b;
+    --surface: #1b1e28;
+    --ink: #eceef4;
+    --muted: #9aa1b3;
+    --line: #2c3040;
+    --accent: #8aa8ff;
+    --foil: #f2c230;
+    --up: #4fcf8a;
+    --down: #ff8577;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 var(--font-body);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+header.top {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--ink); color: var(--bg);
+  border-bottom: 4px solid var(--foil);
+}
+header.top .wrap { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; padding-block: 12px; }
+.brand { display: flex; flex-direction: column; min-width: 0; flex: 1 1 260px; }
+.brand h1 {
+  margin: 0; font-family: var(--font-display); font-weight: 800;
+  font-stretch: 125%; font-size: clamp(1.25rem, 3vw, 1.7rem); letter-spacing: -0.01em; line-height: 1.1;
+}
+.brand h1 span { color: var(--foil); }
+.brand small { opacity: .75; font-size: .82rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 380px; }
+.controls select, .controls input {
+  flex: 1 1 170px; min-width: 0;
+  font: inherit; font-size: .92rem;
+  padding: 8px 10px; border-radius: 6px;
+  border: 1px solid transparent; background: var(--surface); color: var(--ink);
+}
+
+main { padding-block: 20px 48px; display: grid; gap: 28px; }
+
+.note { color: var(--muted); font-size: .9rem; max-width: 70ch; margin: 0; }
+.status { padding: 24px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 8px; }
+
+section.set { display: grid; gap: 10px; scroll-margin-top: 130px; }
+.set-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.set-head h2 {
+  margin: 0; font-family: var(--font-display); font-weight: 700; font-stretch: 112%;
+  font-size: clamp(1.2rem, 2.6vw, 1.55rem); text-wrap: balance;
+}
+.set-meta { color: var(--muted); font-size: .85rem; letter-spacing: .02em; }
+
+.table-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 10px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); }
+tbody tr:last-child td { border-bottom: 0; }
+th {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+  font-weight: 700; white-space: nowrap; background: var(--surface);
+}
+td.num, th.num { text-align: right; white-space: nowrap; }
+td.rank { color: var(--muted); width: 2.2em; text-align: right; }
+td.img { width: 64px; }
+td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 3px; display: block; background: var(--line); }
+.card-name { font-weight: 700; }
+.card-sub { color: var(--muted); font-size: .8rem; }
+.price30 { font-weight: 700; }
+.chip { display: inline-block; font-size: .78rem; padding: 1px 7px; border-radius: 999px; font-weight: 700; }
+.chip.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
+.chip.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
+.chip.flat { color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.cm-link {
+  display: inline-block; white-space: nowrap; text-decoration: none; font-weight: 700; font-size: .85rem;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid var(--accent);
+}
+.cm-link:hover { background: var(--accent); color: var(--surface); }
+
+.movers { display: grid; gap: 10px; }
+.movers h2 { margin: 0; font-family: var(--font-display); font-stretch: 112%; font-size: 1.15rem; }
+
+@media (max-width: 640px) {
+  .hide-sm { display: none; }
+  th, td { padding: 7px 6px; }
+  td.img img { width: 44px; }
+  .card-sub { font-size: .75rem; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>Pokémon <span>Top 30</span></h1>
+      <small id="updated">Preise werden geladen …</small>
+    </div>
+    <div class="controls">
+      <select id="set-filter" aria-label="Set auswählen"><option value="">Alle Sets</option></select>
+      <input id="search" type="search" placeholder="Karte suchen, z. B. Glurak" aria-label="Karte suchen">
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <main id="main">
+    <p class="note">Die 30 teuersten Karten jedes Haupt- und Spezialsets der letzten fünf Jahre, sortiert nach dem 30-Tage-Durchschnittspreis auf Cardmarket. „Trend“ vergleicht den 7-Tage- mit dem 30-Tage-Schnitt: grün heißt, die Karte wurde zuletzt teurer verkauft. Die Preise gelten für alle Sprachversionen zusammen.</p>
+    <div id="movers" class="movers" hidden></div>
+    <div id="sets"><div class="status">Preise werden geladen …</div></div>
+  </main>
+</div>
+
+<script>
+const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+const fmtDate = (iso) => new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtPrice = (v) => (v == null ? "–" : eur.format(v));
+
+function pct(now, before) {
+  if (!now || !before) return null;
+  return ((now - before) / before) * 100;
+}
+function chip(p) {
+  if (p == null) return '<span class="chip flat">–</span>';
+  const cls = p >= 3 ? "up" : p <= -3 ? "down" : "flat";
+  const sign = p > 0 ? "+" : "";
+  return `<span class="chip ${cls}">${sign}${p.toFixed(0)} %</span>`;
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+let data = null;
+let weekAgo = null;     // Snapshot von vor ~7 Tagen: { id: [avg7, avg30] }
+let weekAgoDate = null;
+
+async function loadHistory() {
+  try {
+    const dates = await (await fetch("data/history/index.json", { cache: "no-cache" })).json();
+    const target = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const older = dates.filter((d) => d <= target);
+    if (!older.length) return;
+    weekAgoDate = older[older.length - 1];
+    weekAgo = await (await fetch(`data/history/${weekAgoDate}.json`)).json();
+  } catch { /* noch kein Verlauf */ }
+}
+
+function cardRow(c, i, setName) {
+  const trend = pct(c.avg7, c.avg30);
+  const hist = weekAgo?.[c.id] ? pct(c.avg30, weekAgo[c.id][1]) : null;
+  const img = c.image
+    ? `<a href="${esc(c.image)}/high.webp" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(c.name)}"><img loading="lazy" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}"></a>`
+    : "";
+  const sub = [c.no ? `Nr. ${esc(c.no)}` : "", c.rarity ? esc(c.rarity) : "", c.variant ? esc(c.variant) : "", setName ? esc(setName) : ""]
+    .filter(Boolean).join(" · ");
+  return `<tr>
+    <td class="rank">${i + 1}</td>
+    <td class="img">${img}</td>
+    <td><div class="card-name">${esc(c.name)}</div><div class="card-sub">${sub}</div></td>
+    <td class="num">${fmtPrice(c.avg7)}</td>
+    <td class="num price30">${fmtPrice(c.avg30)}</td>
+    <td class="num">${chip(trend)}</td>
+    ${weekAgo ? `<td class="num hide-sm">${chip(hist)}</td>` : ""}
+    <td><a class="cm-link" href="${esc(c.url)}" target="_blank" rel="noopener"><span class="hide-sm">Cardmarket </span>↗</a></td>
+  </tr>`;
+}
+
+function tableHead() {
+  return `<thead><tr>
+    <th class="num">#</th><th>Bild</th><th>Karte</th>
+    <th class="num">Ø 7 Tage</th><th class="num">Ø 30 Tage</th><th class="num">Trend</th>
+    ${weekAgo ? `<th class="num hide-sm" title="Änderung des 30-Tage-Preises seit ${fmtDate(weekAgoDate)}">vs. Vorwoche</th>` : ""}
+    <th>Link</th>
+  </tr></thead>`;
+}
+
+function renderMovers() {
+  const box = document.getElementById("movers");
+  const all = data.sets.flatMap((s) => s.cards.map((c) => ({ ...c, setName: s.name })));
+  const movers = all
+    .filter((c) => c.avg30 >= 5 && c.avg7)
+    .map((c) => ({ ...c, t: pct(c.avg7, c.avg30) }))
+    .filter((c) => c.t >= 10)
+    .sort((a, b) => b.t - a.t)
+    .slice(0, 10);
+  if (!movers.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<h2>Größte Aufsteiger (7 Tage vs. 30 Tage, ab 5 €)</h2>
+    <div class="table-scroll"><table>${tableHead()}<tbody>${movers.map((c, i) => cardRow(c, i, c.setName)).join("")}</tbody></table></div>`;
+}
+
+function render() {
+  const setId = document.getElementById("set-filter").value;
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const out = [];
+  for (const s of data.sets) {
+    if (setId && s.id !== setId) continue;
+    const cards = s.cards.map((c, i) => [c, i]).filter(([c]) => !q || c.name.toLowerCase().includes(q));
+    if (!cards.length) continue;
+    out.push(`<section class="set" id="set-${esc(s.id)}">
+      <div class="set-head"><h2>${esc(s.name)}</h2>
+        <span class="set-meta">${s.serie ? esc(s.serie) + " · " : ""}erschienen ${fmtDate(s.releaseDate)}</span></div>
+      <div class="table-scroll"><table>${tableHead()}<tbody>${cards.map(([c, i]) => cardRow(c, i)).join("")}</tbody></table></div>
+    </section>`);
+  }
+  document.getElementById("sets").innerHTML = out.length
+    ? `<div style="display:grid;gap:28px">${out.join("")}</div>`
+    : '<div class="status">Keine Karte gefunden. Suchbegriff oder Set-Auswahl ändern.</div>';
+  document.getElementById("movers").hidden = Boolean(setId || q) || !document.getElementById("movers").innerHTML;
+}
+
+async function init() {
+  try {
+    const res = await fetch("data/latest.json", { cache: "no-cache" });
+    if (!res.ok) throw new Error();
+    data = await res.json();
+  } catch {
+    document.getElementById("sets").innerHTML = '<div class="status">Noch keine Preise vorhanden. Die erste Aktualisierung läuft automatisch einmal am Tag.</div>';
+    document.getElementById("updated").textContent = "Noch keine Daten";
+    return;
+  }
+  await loadHistory();
+  const updated = new Date(data.updated);
+  document.getElementById("updated").textContent =
+    `${data.sets.length} Sets · Stand ${updated.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })} · Quelle: Cardmarket via TCGdex`;
+  const sel = document.getElementById("set-filter");
+  for (const s of data.sets) sel.add(new Option(`${s.name} (${s.releaseDate.slice(0, 4)})`, s.id));
+  renderMovers();
+  render();
+  sel.addEventListener("change", render);
+  let t;
+  document.getElementById("search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(render, 150); });
+}
+init();
+</script>
+</body>
+</html>
