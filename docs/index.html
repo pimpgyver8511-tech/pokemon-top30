@@ -192,8 +192,10 @@ async function loadHistory() {
 function cardRow(c, i, setName) {
   const trend = pct(c.avg7, c.avg30);
   const hist = weekAgo?.[c.id] ? pct(c.avg30, weekAgo[c.id][1]) : null;
-  const img = c.image
-    ? `<a href="${esc(c.image)}/high.webp" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(c.name)}"><img loading="lazy" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}"></a>`
+  const thumb = c.thumb ?? (c.image ? `${c.image}/low.webp` : null);
+  const large = c.large ?? (c.image ? `${c.image}/high.webp` : thumb);
+  const img = thumb
+    ? `<a href="${esc(large)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(c.name)}"><img loading="lazy" src="${esc(thumb)}" alt="${esc(c.name)}"></a>`
     : '<span class="no-img" aria-label="Kein Bild verfügbar">?</span>';
   const sub = [c.no ? `Nr. ${esc(c.no)}` : "", c.rarity ? esc(c.rarity) : "", c.variant ? esc(c.variant) : "", setName ? esc(setName) : ""]
     .filter(Boolean).join(" · ");

@@ -76,6 +76,16 @@ function cardmarketUrl(idProduct, name) {
   return `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(name)}`;
 }
 
+// TCGdex hat für Trainer-/Galar-Galerie-Karten oft kein Bild; dann pokemontcg.io.
+function imageUrls(tcgdexImage, cardId) {
+  if (tcgdexImage) return { thumb: `${tcgdexImage}/low.webp`, large: `${tcgdexImage}/high.webp` };
+  const m = /^(swsh\d+(?:\.5)?)(tg|gg)-(.+)$/i.exec(cardId ?? "");
+  if (!m) return null;
+  const setId = `${m[1].replace(".5", "pt5")}${m[2].toLowerCase()}`;
+  const base = `https://images.pokemontcg.io/${setId}/${m[3].toUpperCase()}`;
+  return { thumb: `${base}.png`, large: `${base}_hires.png` };
+}
+
 function isWantedSet(set) {
   if (!set?.releaseDate || set.releaseDate < cutoffIso) return false;
   if (/p$/i.test(set.id)) return false; // Promo-Sets (swshp, svp, mep …)
@@ -113,12 +123,14 @@ async function buildSet(set) {
       image ??= en?.image;
     }
     if (!price || !isNum(price.avg30)) return null;
+    const imgs = imageUrls(image, card.id);
     return {
       id: card.id,
       no: card.localId,
       name: card.name,
       rarity: card.rarity ?? null,
-      image: image ?? null,
+      thumb: imgs?.thumb ?? null,
+      large: imgs?.large ?? null,
       ...price,
       url: cardmarketUrl(idProduct, card.name),
     };
