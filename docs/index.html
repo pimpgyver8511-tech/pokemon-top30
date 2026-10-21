@@ -615,6 +615,7 @@ let rec = null;
 let listening = false;
 let lastHit = { key: "", at: 0 };
 const heardHistory = [];
+let lastManualInput = 0; // wann zuletzt selbst getippt wurde
 
 // Für gesprochene Sprache nur eindeutige Sprachwörter (z. B. nicht "ja")
 const SPOKEN_LANG = new Map([...LANG_OF].filter(([w]) => w.length >= 6));
@@ -677,8 +678,11 @@ function showHeard(ids, lang) {
   if (key === lastHit.key && now - lastHit.at < 15000) return; // nicht ständig neu auslösen
   lastHit = { key, at: now };
   const query = lang ? `${name} ${LANG_WORDS[lang][0]}` : name;
-  document.getElementById("quick-input").value = query;
-  renderQuick();
+  // Wer gerade selbst tippt, wird nicht überschrieben: dann nur in den Verlauf
+  if (Date.now() - lastManualInput > 8000) {
+    document.getElementById("quick-input").value = query;
+    renderQuick();
+  }
   if (!heardHistory.includes(query)) {
     heardHistory.unshift(query);
     heardHistory.length = Math.min(heardHistory.length, 6);
@@ -784,7 +788,8 @@ async function init() {
   setTimeout(() => { quickLoading ??= loadQuick().catch(() => { quickLoading = null; }); }, 1200);
   if (view !== "sets") setView(view);
   let qt;
-  document.getElementById("quick-input").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(renderQuick, 120); });
+  document.getElementById("quick-input").addEventListener("input", () => {
+    lastManualInput = Date.now(); clearTimeout(qt); qt = setTimeout(renderQuick, 120); });
   document.getElementById("main").addEventListener("click", (e) => {
     if (e.target.closest("#more")) { shown += PAGE; render(); return; }
     const btn = e.target.closest("[data-sort]");
