@@ -84,6 +84,7 @@ header.top .wrap { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: 
 main { padding-block: 20px 48px; display: grid; gap: 28px; }
 
 .note { color: var(--muted); font-size: .9rem; max-width: 70ch; margin: 0; }
+.status.pending { text-align: left; border-style: dashed; border-color: var(--foil); }
 .status { padding: 24px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 8px; }
 
 section.set { display: grid; gap: 10px; scroll-margin-top: 130px; }
@@ -302,7 +303,7 @@ function renderAll(setId, q) {
   document.getElementById("sets").innerHTML = list.length
     ? `<section class="set" id="ranking">
         <div class="set-head"><h2>Gesamtrangliste</h2>
-          <span class="set-meta">${list.length} Karten aus ${setId ? "1 Set" : data.sets.length + " Sets"} · sortiert nach ${label} ${sortDir === "desc" ? "absteigend" : "aufsteigend"}</span></div>
+          <span class="set-meta">${list.length} Karten aus ${setId ? "1 Set" : pricedSets().length + " Sets"} · sortiert nach ${label} ${sortDir === "desc" ? "absteigend" : "aufsteigend"}</span></div>
         <div class="table-scroll"><table>${tableHead(true)}<tbody>${list.slice(0, shown).map((c, i) => cardRow(c, i, c.setName)).join("")}</tbody></table></div>
         ${list.length > shown ? `<button type="button" class="more-btn" id="more">${Math.min(PAGE, list.length - shown)} weitere anzeigen (${shown} von ${list.length})</button>` : ""}
       </section>`
@@ -318,6 +319,15 @@ function render() {
   for (const s of data.sets) {
     if (setId && s.id !== setId) continue;
     const cards = sortCards(s.cards.filter((c) => !q || c.name.toLowerCase().includes(q))).map((c, i) => [c, i]);
+    if (s.pending) {
+      if (q) continue;
+      out.push(`<section class="set" id="set-${esc(s.id)}">
+        <div class="set-head"><h2>${esc(s.name)}</h2>
+          <span class="set-meta">${s.serie ? esc(s.serie) + " · " : ""}erschienen ${fmtDate(s.releaseDate)}</span></div>
+        <div class="status pending"><strong>Preise folgen.</strong> Das Set ist neu${s.cardTotal ? ` (${s.cardTotal} Karten)` : ""} und die Preisdatenbank hat noch keine Cardmarket-Preise dafür. Die Top 30 erscheinen hier automatisch, sobald es Preise gibt.</div>
+      </section>`);
+      continue;
+    }
     if (!cards.length) continue;
     out.push(`<section class="set" id="set-${esc(s.id)}">
       <div class="set-head"><h2>${esc(s.name)}</h2>
@@ -330,6 +340,8 @@ function render() {
     : '<div class="status">Keine Karte gefunden. Suchbegriff oder Set-Auswahl ändern.</div>';
   drawMovers(!setId && !q);
 }
+
+const pricedSets = () => data.sets.filter((s) => !s.pending);
 
 async function init() {
   try {
@@ -344,9 +356,9 @@ async function init() {
   await loadHistory();
   const updated = new Date(data.updated);
   document.getElementById("updated").textContent =
-    `${data.sets.length} Sets · Stand ${updated.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })} · Quelle: Cardmarket via TCGdex`;
+    `${pricedSets().length} Sets · Stand ${updated.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })} · Quelle: Cardmarket via TCGdex`;
   const sel = document.getElementById("set-filter");
-  for (const s of data.sets) sel.add(new Option(`${s.name} (${s.releaseDate.slice(0, 4)})`, s.id));
+  for (const s of data.sets) sel.add(new Option(`${s.name} (${s.releaseDate.slice(0, 4)})${s.pending ? " – Preise folgen" : ""}`, s.id));
   renderMovers();
   render();
   sel.addEventListener("change", () => { shown = PAGE; render(); });

@@ -241,8 +241,10 @@ async function main() {
     }
     if (built.cards.length) result.push(built);
     else {
-      console.warn(`${set.name} (${set.id}): noch keine Preise – ausgelassen`);
+      // Set trotzdem anzeigen, mit Hinweis "Preise folgen"
+      console.warn(`${set.name} (${set.id}): noch keine Preise – wird mit Hinweis angezeigt`);
       await explainMissing(set);
+      result.push({ ...built, pending: true, cardTotal: (set.cards?.length ?? 0) + (set.extraCards?.length ?? 0) });
     }
   }
   const totalCards = result.reduce((n, s) => n + s.cards.length, 0);
