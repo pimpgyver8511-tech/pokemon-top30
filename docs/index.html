@@ -118,6 +118,15 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   display: inline-block; white-space: nowrap; text-decoration: none; font-weight: 700; font-size: .85rem;
   padding: 5px 10px; border-radius: 6px; border: 1px solid var(--accent);
 }
+.sort-btn {
+  all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  font: inherit; color: var(--muted); text-transform: inherit; letter-spacing: inherit; white-space: nowrap;
+  padding: 4px 6px; margin: -4px -6px; border-radius: 4px;
+}
+.sort-btn:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.sort-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sort-btn.active { color: var(--accent); }
+.sort-btn .arrow { font-size: .85em; }
 .cm-link:hover { background: var(--accent); color: var(--surface); }
 
 .movers { display: grid; gap: 10px; }
@@ -211,10 +220,22 @@ function cardRow(c, i, setName) {
   </tr>`;
 }
 
-function tableHead() {
+// Sortierung der Set-Tabellen: Spaltenkopf antippen = absteigend, nochmal = aufsteigend.
+let sortKey = "avg30";
+let sortDir = "desc";
+
+function sortHead(key, label, sortable) {
+  if (!sortable) return `<th class="num">${label}</th>`;
+  const active = sortKey === key;
+  const aria = active ? (sortDir === "desc" ? "descending" : "ascending") : "none";
+  const arrow = active ? (sortDir === "desc" ? "▼" : "▲") : "↕";
+  return `<th class="num" aria-sort="${aria}"><button type="button" class="sort-btn${active ? " active" : ""}" data-sort="${key}">${label}<span class="arrow" aria-hidden="true">${arrow}</span></button></th>`;
+}
+
+function tableHead(sortable = false) {
   return `<thead><tr>
     <th class="num">#</th><th>Bild</th><th>Karte</th>
-    <th class="num">Ø 7 Tage</th><th class="num">Ø 30 Tage</th><th class="num">Trend</th>
+    ${sortHead("avg7", "Ø 7 Tage", sortable)}${sortHead("avg30", "Ø 30 Tage", sortable)}<th class="num">Trend</th>
     ${weekAgo ? `<th class="num hide-sm" title="Änderung des 30-Tage-Preises seit ${fmtDate(weekAgoDate)}">vs. Vorwoche</th>` : ""}
     <th>Link</th>
   </tr></thead>`;
@@ -241,12 +262,21 @@ function render() {
   const out = [];
   for (const s of data.sets) {
     if (setId && s.id !== setId) continue;
-    const cards = s.cards.map((c, i) => [c, i]).filter(([c]) => !q || c.name.toLowerCase().includes(q));
+    const dir = sortDir === "desc" ? -1 : 1;
+    const cards = s.cards
+      .filter((c) => !q || c.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const av = a[sortKey], bv = b[sortKey];
+        if (av == null) return 1; // Karten ohne Preis immer ans Ende
+        if (bv == null) return -1;
+        return (av - bv) * dir;
+      })
+      .map((c, i) => [c, i]);
     if (!cards.length) continue;
     out.push(`<section class="set" id="set-${esc(s.id)}">
       <div class="set-head"><h2>${esc(s.name)}</h2>
         <span class="set-meta">${s.serie ? esc(s.serie) + " · " : ""}erschienen ${fmtDate(s.releaseDate)}</span></div>
-      <div class="table-scroll"><table>${tableHead()}<tbody>${cards.map(([c, i]) => cardRow(c, i)).join("")}</tbody></table></div>
+      <div class="table-scroll"><table>${tableHead(true)}<tbody>${cards.map(([c, i]) => cardRow(c, i)).join("")}</tbody></table></div>
     </section>`);
   }
   document.getElementById("sets").innerHTML = out.length
@@ -274,6 +304,19 @@ async function init() {
   renderMovers();
   render();
   sel.addEventListener("change", render);
+  document.getElementById("sets").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-sort]");
+    if (!btn) return;
+    const key = btn.dataset.sort;
+    if (sortKey === key) sortDir = sortDir === "desc" ? "asc" : "desc";
+    else { sortKey = key; sortDir = "desc"; }
+    // Nach dem Neuzeichnen an derselben Tabelle bleiben
+    const setId = btn.closest("section.set")?.id;
+    const top = btn.getBoundingClientRect().top;
+    render();
+    const again = setId && document.querySelector(`#${CSS.escape(setId)} [data-sort="${key}"]`);
+    if (again) { window.scrollBy(0, again.getBoundingClientRect().top - top); again.focus({ preventScroll: true }); }
+  });
   let t;
   document.getElementById("search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(render, 150); });
 }
