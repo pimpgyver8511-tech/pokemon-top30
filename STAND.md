@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 21.10.2026
+Zuletzt aktualisiert: 21.10.2026 (nachts)
 
 ## Was fertig ist
 
@@ -14,6 +14,13 @@ Zuletzt aktualisiert: 21.10.2026
 - **Mithören:** Spracherkennung (Deutsch) mit lautähnlicher Namenserkennung, Smalltalk-Filter, Protokoll „Was gehört wurde“
 - **Bild erkennen:** Screenshot hochladen, einfügen oder per Drag & Drop; Claude erkennt die Karte (eigener API-Schlüssel nötig)
 - **Als App installierbar,** Screenshots über das Android-Teilen-Menü direkt an die Seite schicken
+
+## Datenumfang (Stand Lauf vom 21.10.2026)
+
+- Schnellsuche gesamt: ca. 41.500 Karten (aktuell 6.100 + Promos, asiatisch 12.800, ältere 22.000 aus 237 Sets, ab 1996)
+- Ladezeit in Handy-Simulation: Suche nach ca. 4,5 s bereit, ältere Karten nach ca. 15 s im Hintergrund
+- Eine Suche dauert 15–40 ms
+- Täglicher Lauf auf GitHub: ca. 5 Minuten
 
 ## Offen (morgen am Rechner)
 
