@@ -250,10 +250,27 @@ function renderMovers() {
     .filter((c) => c.t >= 10)
     .sort((a, b) => b.t - a.t)
     .slice(0, 10);
-  if (!movers.length) { box.hidden = true; return; }
-  box.hidden = false;
+  moversList = movers;
+}
+
+let moversList = [];
+
+function sortCards(list) {
+  const dir = sortDir === "desc" ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av == null) return 1; // Karten ohne Preis immer ans Ende
+    if (bv == null) return -1;
+    return (av - bv) * dir;
+  });
+}
+
+function drawMovers(show) {
+  const box = document.getElementById("movers");
+  box.hidden = !show || !moversList.length;
+  if (box.hidden) return;
   box.innerHTML = `<h2>Größte Aufsteiger (7 Tage vs. 30 Tage, ab 5 €)</h2>
-    <div class="table-scroll"><table>${tableHead()}<tbody>${movers.map((c, i) => cardRow(c, i, c.setName)).join("")}</tbody></table></div>`;
+    <div class="table-scroll"><table>${tableHead(true)}<tbody>${sortCards(moversList).map((c, i) => cardRow(c, i, c.setName)).join("")}</tbody></table></div>`;
 }
 
 function render() {
@@ -262,16 +279,7 @@ function render() {
   const out = [];
   for (const s of data.sets) {
     if (setId && s.id !== setId) continue;
-    const dir = sortDir === "desc" ? -1 : 1;
-    const cards = s.cards
-      .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .sort((a, b) => {
-        const av = a[sortKey], bv = b[sortKey];
-        if (av == null) return 1; // Karten ohne Preis immer ans Ende
-        if (bv == null) return -1;
-        return (av - bv) * dir;
-      })
-      .map((c, i) => [c, i]);
+    const cards = sortCards(s.cards.filter((c) => !q || c.name.toLowerCase().includes(q))).map((c, i) => [c, i]);
     if (!cards.length) continue;
     out.push(`<section class="set" id="set-${esc(s.id)}">
       <div class="set-head"><h2>${esc(s.name)}</h2>
@@ -282,7 +290,7 @@ function render() {
   document.getElementById("sets").innerHTML = out.length
     ? `<div style="display:grid;gap:28px">${out.join("")}</div>`
     : '<div class="status">Keine Karte gefunden. Suchbegriff oder Set-Auswahl ändern.</div>';
-  document.getElementById("movers").hidden = Boolean(setId || q) || !document.getElementById("movers").innerHTML;
+  drawMovers(!setId && !q);
 }
 
 async function init() {
@@ -304,14 +312,14 @@ async function init() {
   renderMovers();
   render();
   sel.addEventListener("change", render);
-  document.getElementById("sets").addEventListener("click", (e) => {
+  document.getElementById("main").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-sort]");
     if (!btn) return;
     const key = btn.dataset.sort;
     if (sortKey === key) sortDir = sortDir === "desc" ? "asc" : "desc";
     else { sortKey = key; sortDir = "desc"; }
     // Nach dem Neuzeichnen an derselben Tabelle bleiben
-    const setId = btn.closest("section.set")?.id;
+    const setId = btn.closest("section.set, #movers")?.id;
     const top = btn.getBoundingClientRect().top;
     render();
     const again = setId && document.querySelector(`#${CSS.escape(setId)} [data-sort="${key}"]`);
