@@ -118,6 +118,16 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   display: inline-block; white-space: nowrap; text-decoration: none; font-weight: 700; font-size: .85rem;
   padding: 5px 10px; border-radius: 6px; border: 1px solid var(--accent);
 }
+.view-toggle { display: flex; flex: 1 1 100%; border-radius: 6px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--bg) 35%, transparent); }
+.view-toggle button {
+  flex: 1; font: inherit; font-size: .9rem; font-weight: 700; padding: 7px 10px; cursor: pointer;
+  border: 0; background: transparent; color: var(--bg);
+}
+.view-toggle button[aria-pressed="true"] { background: var(--foil); color: #171a24; }
+.more-btn {
+  justify-self: center; font: inherit; font-weight: 700; padding: 9px 16px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--surface); color: var(--accent);
+}
 .sort-btn {
   all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
   font: inherit; color: var(--muted); text-transform: inherit; letter-spacing: inherit; white-space: nowrap;
@@ -152,6 +162,10 @@ html { scroll-behavior: smooth; }
     <div class="controls">
       <select id="set-filter" aria-label="Set auswählen"><option value="">Alle Sets</option></select>
       <input id="search" type="search" placeholder="Karte suchen, z. B. Glurak" aria-label="Karte suchen">
+      <div class="view-toggle" role="group" aria-label="Ansicht">
+        <button type="button" id="view-sets" aria-pressed="true">Nach Set</button>
+        <button type="button" id="view-all" aria-pressed="false">Alle Sets zusammen</button>
+      </div>
     </div>
   </div>
 </header>
@@ -273,9 +287,33 @@ function drawMovers(show) {
     <div class="table-scroll"><table>${tableHead(true)}<tbody>${sortCards(moversList).map((c, i) => cardRow(c, i, c.setName)).join("")}</tbody></table></div>`;
 }
 
+// Ansicht: "sets" = eine Tabelle pro Set, "all" = eine Gesamtrangliste über alle Sets
+let view = location.hash === "#rangliste" ? "all" : "sets";
+const PAGE = 100;
+let shown = PAGE;
+
+function renderAll(setId, q) {
+  const all = data.sets
+    .filter((s) => !setId || s.id === setId)
+    .flatMap((s) => s.cards.map((c) => ({ ...c, setName: s.name })))
+    .filter((c) => !q || c.name.toLowerCase().includes(q));
+  const list = sortCards(all);
+  const label = sortKey === "avg7" ? "Ø 7 Tage" : "Ø 30 Tage";
+  document.getElementById("sets").innerHTML = list.length
+    ? `<section class="set" id="ranking">
+        <div class="set-head"><h2>Gesamtrangliste</h2>
+          <span class="set-meta">${list.length} Karten aus ${setId ? "1 Set" : data.sets.length + " Sets"} · sortiert nach ${label} ${sortDir === "desc" ? "absteigend" : "aufsteigend"}</span></div>
+        <div class="table-scroll"><table>${tableHead(true)}<tbody>${list.slice(0, shown).map((c, i) => cardRow(c, i, c.setName)).join("")}</tbody></table></div>
+        ${list.length > shown ? `<button type="button" class="more-btn" id="more">${Math.min(PAGE, list.length - shown)} weitere anzeigen (${shown} von ${list.length})</button>` : ""}
+      </section>`
+    : '<div class="status">Keine Karte gefunden. Suchbegriff oder Set-Auswahl ändern.</div>';
+  drawMovers(false);
+}
+
 function render() {
   const setId = document.getElementById("set-filter").value;
   const q = document.getElementById("search").value.trim().toLowerCase();
+  if (view === "all") return renderAll(setId, q);
   const out = [];
   for (const s of data.sets) {
     if (setId && s.id !== setId) continue;
@@ -311,10 +349,23 @@ async function init() {
   for (const s of data.sets) sel.add(new Option(`${s.name} (${s.releaseDate.slice(0, 4)})`, s.id));
   renderMovers();
   render();
-  sel.addEventListener("change", render);
+  sel.addEventListener("change", () => { shown = PAGE; render(); });
+  const setView = (v) => {
+    view = v; shown = PAGE;
+    document.getElementById("view-sets").setAttribute("aria-pressed", String(v === "sets"));
+    document.getElementById("view-all").setAttribute("aria-pressed", String(v === "all"));
+    try { history.replaceState(null, "", v === "all" ? "#rangliste" : location.pathname + location.search); } catch {}
+    render();
+    window.scrollTo(0, 0);
+  };
+  document.getElementById("view-sets").addEventListener("click", () => setView("sets"));
+  document.getElementById("view-all").addEventListener("click", () => setView("all"));
+  if (view === "all") setView("all");
   document.getElementById("main").addEventListener("click", (e) => {
+    if (e.target.closest("#more")) { shown += PAGE; render(); return; }
     const btn = e.target.closest("[data-sort]");
     if (!btn) return;
+    shown = PAGE;
     const key = btn.dataset.sort;
     if (sortKey === key) sortDir = sortDir === "desc" ? "asc" : "desc";
     else { sortKey = key; sortDir = "desc"; }
@@ -326,7 +377,7 @@ async function init() {
     if (again) { window.scrollBy(0, again.getBoundingClientRect().top - top); again.focus({ preventScroll: true }); }
   });
   let t;
-  document.getElementById("search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(render, 150); });
+  document.getElementById("search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { shown = PAGE; render(); }, 150); });
 }
 init();
 </script>
