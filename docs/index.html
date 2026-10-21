@@ -180,6 +180,10 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .snap-msg { margin: 0; font-size: .92rem; grid-column: auto; }
 .snap-result > .snap-msg:only-child { grid-column: 1 / -1; }
 .snap-err { color: var(--down); }
+.snap-warn {
+  grid-column: 1 / -1; margin: 0; font-size: .9rem; padding: 8px 10px; border-radius: 6px;
+  background: color-mix(in srgb, var(--foil) 22%, var(--surface)); border: 1px solid var(--foil); color: var(--ink);
+}
 .snap-conf { color: var(--muted); }
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -985,6 +989,7 @@ Felder:
 - number: Kartennummer wie gedruckt ohne Set-Kürzel, z. B. "199/165", "027", "TG23". Leer, wenn nicht lesbar.
 - set_hint: Set oder Promo-Kürzel, falls erkennbar (z. B. "SVP Promo", "151", "Prismatische Entwicklungen"), sonst leer.
 - language: Sprache des Aufdrucks (de, en, ja, ko, zh oder unknown).
+- year: Jahr aus der Copyright-Zeile unten auf der Karte (z. B. "2002", "2023"), leer wenn nicht lesbar.
 - confidence: high, medium oder low.
 Die am deutlichsten gezeigte Karte zuerst. Ist keine Karte erkennbar, gib eine leere Liste zurück. Rate lieber mit confidence "low", als nichts zu liefern.`;
 const SNAP_SCHEMA = {
@@ -997,7 +1002,7 @@ const SNAP_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "language", "confidence"],
+        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "language", "year", "confidence"],
         properties: {
           pokemon_en: { type: "string" },
           pokemon_de: { type: "string" },
@@ -1005,6 +1010,7 @@ const SNAP_SCHEMA = {
           number: { type: "string" },
           set_hint: { type: "string" },
           language: { type: "string", enum: ["de", "en", "ja", "ko", "zh", "unknown"] },
+          year: { type: "string" },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
         },
       },
@@ -1081,15 +1087,33 @@ function snapQueries(card) {
 }
 
 function snapApply(card) {
+  const num = (card.number || "").replace(/^[A-Z]{2,5}\s+/i, "").trim();
   for (const q of snapQueries(card)) {
     if (quickSearch(q).list.length) {
       document.getElementById("quick-input").value = q;
       lastManualInput = Date.now(); // Mithören überschreibt das Ergebnis nicht sofort
       renderQuick();
-      return q;
+      // Genau getroffen nur, wenn die gelesene Nummer in der Suche steckt
+      return { query: q, exact: Boolean(num) && q.includes(num) };
     }
   }
-  return null;
+  return { query: null, exact: false };
+}
+
+// Warnung, wenn die erkannte Karte nicht (sicher) in der Datenbank ist
+function snapWarning(card, hit) {
+  const name = card.pokemon_de || card.pokemon_en || card.card_name;
+  const cm = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(card.card_name || name)}`;
+  const link = `<a href="${esc(cm)}" target="_blank" rel="noopener">auf Cardmarket suchen ↗</a>`;
+  const year = parseInt(card.year, 10);
+  if (year && year < new Date().getFullYear() - 5) {
+    return `<p class="snap-warn"><b>Achtung:</b> Die Karte ist von ${year}. Die Datenbank enthält nur Karten der letzten 5 Jahre, die Preise unten gehören zu <b>anderen</b> ${esc(name)}-Karten. Preis dieser Karte ${link}.</p>`;
+  }
+  if (!hit.query) return `<p class="snap-warn">Diese Karte ist nicht in der Datenbank. Preis ${link}.</p>`;
+  if (!hit.exact) {
+    return `<p class="snap-warn"><b>Unsicher:</b> Genau diese Version${card.number ? ` (Nr. ${esc(card.number)})` : ""} wurde nicht gefunden. Unten stehen ${esc(name)}-Karten, die passen könnten. Im Zweifel ${link}.</p>`;
+  }
+  return "";
 }
 
 async function snapRecognize(blob) {
@@ -1138,13 +1162,15 @@ async function snapRecognize(blob) {
       return;
     }
     const first = cards[0];
-    const query = snapApply(first);
+    const hit = snapApply(first);
+    const query = hit.query;
     const desc = [first.card_name || first.pokemon_de, first.number && `Nr. ${first.number}`, first.set_hint, SNAP_LANG_WORD[first.language] && LANG_LABEL[first.language === "zh" ? "zh" : first.language]]
       .filter(Boolean).map(esc).join(" · ");
     const others = cards.slice(1).map((c) => snapQueries(c)[0]).filter(Boolean);
     snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild">
       <div class="snap-msg"><b>Erkannt:</b> ${desc} <span class="snap-conf">(${SNAP_CONF[first.confidence] ?? ""}, ${secs} s)</span>
-      ${query ? "" : "<br>Diese Karte ist nicht in der Datenbank. Bitte den Namen unten anpassen."}</div>
+      </div>
+      ${snapWarning(first, hit)}
       ${others.length ? `<div class="listen-history">${others.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}`);
     if (!query) document.getElementById("quick-input").value = first.pokemon_de || first.pokemon_en || "";
   } catch (err) {

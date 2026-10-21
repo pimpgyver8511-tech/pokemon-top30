@@ -30,3 +30,5 @@ Zuletzt aktualisiert: 21.10.2026
 - Bei koreanischen und chinesischen Karten ist unklar, ob der Preis nur für diese Sprachversion gilt
 - Wenige koreanische Karten in der Datenquelle; viele asiatische Karten ohne Bild
 - „30 Jahre“-Sets: noch keine Cardmarket-Preise bei den Datenquellen, erscheinen automatisch
+- Ältere Karten (vor ca. 2021) sind nicht in der Datenbank. Die Bilderkennung warnt dann und verlinkt die Cardmarket-Suche.
+- Idee für später: ältere Sets (z. B. ab 2002) mit in die Schnellsuche aufnehmen
