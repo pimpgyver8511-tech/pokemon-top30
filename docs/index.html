@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pokémon Top 30</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#171a24">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="description" content="Die 30 wertvollsten Karten pro Pokémon-Set der letzten fünf Jahre mit Cardmarket-Preisen, täglich aktualisiert.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -157,6 +161,30 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .listen-log summary { cursor: pointer; font-weight: 700; color: var(--ink); }
 .listen-log ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 3px; }
 .listen-log b { color: var(--up); }
+.snap-btn { background: var(--ink); color: var(--bg); }
+.snap-gear {
+  flex: 0 0 auto; font: inherit; font-size: .9rem; padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.snap-settings { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.snap-settings label[for="snap-key"] { font-weight: 700; }
+#snap-key { font: inherit; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+.snap-settings fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.snap-settings legend { font-weight: 700; margin-bottom: 4px; }
+.snap-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.snap-actions button { font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 6px; cursor: pointer; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); }
+.snap-actions button:first-child { background: var(--accent); color: var(--surface); }
+.snap-result { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: start; }
+.snap-result .listen-history { grid-column: 1 / -1; }
+.snap-thumb { width: 72px; max-height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.snap-msg { margin: 0; font-size: .92rem; grid-column: auto; }
+.snap-result > .snap-msg:only-child { grid-column: 1 / -1; }
+.snap-err { color: var(--down); }
+.snap-conf { color: var(--muted); }
+.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+.quick.drop { outline: 3px dashed var(--accent); outline-offset: 6px; border-radius: 8px; }
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
 .qcard {
@@ -229,7 +257,26 @@ html { scroll-behavior: smooth; }
       <label for="quick-input" class="quick-label">Karte aus dem Stream nachschlagen</label>
       <div class="listen">
         <button type="button" id="listen-btn" class="listen-btn" aria-pressed="false">Mithören starten</button>
+        <label for="snap-file" class="listen-btn snap-btn" role="button" tabindex="0">Bild erkennen</label>
+        <input id="snap-file" type="file" accept="image/*" hidden>
+        <button type="button" id="snap-settings-btn" class="snap-gear" aria-expanded="false" aria-controls="snap-settings">Einstellungen</button>
       </div>
+      <div id="snap-settings" class="snap-settings" hidden>
+        <label for="snap-key">Claude API-Schlüssel für die Bilderkennung</label>
+        <input id="snap-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+        <fieldset>
+          <legend>Erkennung</legend>
+          <label><input type="radio" name="snap-mode" value="exact" id="snap-mode-exact"> Genau (Claude Opus 5.5, ca. 2–3 Cent pro Bild)</label>
+          <label><input type="radio" name="snap-mode" value="fast" id="snap-mode-fast"> Schnell (Claude Haiku 5.5, unter 0,1 Cent pro Bild)</label>
+        </fieldset>
+        <div class="snap-actions">
+          <button type="button" id="snap-save">Speichern</button>
+          <button type="button" id="snap-clear">Schlüssel löschen</button>
+        </div>
+        <p class="quick-hint" id="snap-key-state"></p>
+        <p class="quick-hint">Der Schlüssel bleibt nur auf diesem Gerät gespeichert und wird nur an Anthropic geschickt. Tipp: In der Anthropic Console ein monatliches Ausgabenlimit setzen.</p>
+      </div>
+      <div id="snap-result" class="snap-result" hidden></div>
       <p id="listen-status" class="listen-status" hidden></p>
       <div id="listen-history" class="listen-history" hidden></div>
       <details id="listen-log" class="listen-log" hidden>
@@ -922,6 +969,266 @@ function stopListening() {
   btn.textContent = "Mithören starten";
 }
 
+// ---------- Bild erkennen: Screenshot -> Claude erkennt die Karte -> Schnellsuche ----------
+// Der API-Schlüssel bleibt nur im Browser dieses Geräts (localStorage) und wird direkt an Anthropic geschickt.
+const SNAP_MODELS = { exact: "claude-opus-5-5", fast: "claude-haiku-5-5" };
+const SNAP_SDK = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
+const SNAP_SYSTEM = `Du bekommst ein Bild aus einem Pokémon-TCG-Livestream (z. B. Whatnot) oder ein Foto einer Karte.
+Bestimme die Pokémon-Sammelkarte(n), die im Bild gezeigt werden. Ignoriere Chat-Nachrichten, App-Oberflächen, Bauchbinden und sonstigen Text, der nicht auf der Karte steht.
+Lies so genau wie möglich: den gedruckten Kartennamen (mit Zusätzen wie ex, VMAX, VSTAR, V, GX, Mega), die Kartennummer unten links (z. B. "199/165", "TG23", "SVP 027") und die Sprache des Aufdrucks.
+Nutze auch Attackennamen, Illustration und Seltenheitssymbol, um die Karte einzuordnen.
+Felder:
+- pokemon_en / pokemon_de: offizieller Pokémon-Name auf Englisch und Deutsch (ohne Zusätze wie ex). Bei Trainer- oder Energiekarten den Kartennamen.
+- card_name: Kartenname genau wie gedruckt.
+- number: Kartennummer wie gedruckt ohne Set-Kürzel, z. B. "199/165", "027", "TG23". Leer, wenn nicht lesbar.
+- set_hint: Set oder Promo-Kürzel, falls erkennbar (z. B. "SVP Promo", "151", "Prismatische Entwicklungen"), sonst leer.
+- language: Sprache des Aufdrucks (de, en, ja, ko, zh oder unknown).
+- confidence: high, medium oder low.
+Die am deutlichsten gezeigte Karte zuerst. Ist keine Karte erkennbar, gib eine leere Liste zurück. Rate lieber mit confidence "low", als nichts zu liefern.`;
+const SNAP_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cards"],
+  properties: {
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "language", "confidence"],
+        properties: {
+          pokemon_en: { type: "string" },
+          pokemon_de: { type: "string" },
+          card_name: { type: "string" },
+          number: { type: "string" },
+          set_hint: { type: "string" },
+          language: { type: "string", enum: ["de", "en", "ja", "ko", "zh", "unknown"] },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+        },
+      },
+    },
+  },
+};
+const SNAP_LANG_WORD = { de: "deutsch", en: "englisch", ja: "japanisch", ko: "koreanisch", zh: "chinesisch" };
+const SNAP_CONF = { high: "sicher", medium: "ziemlich sicher", low: "unsicher" };
+
+function snapGet(k, fallback) { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } }
+function snapSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); return true; } catch { return false; } }
+
+function snapRenderSettings() {
+  const key = snapGet("snapKey", "");
+  const mode = snapGet("snapMode", "exact");
+  document.getElementById("snap-key").value = key ? "••••••••" + key.slice(-4) : "";
+  document.getElementById("snap-key").dataset.saved = key ? "1" : "";
+  document.querySelector(`input[name="snap-mode"][value="${mode}"]`).checked = true;
+  document.getElementById("snap-key-state").textContent = key ? "Schlüssel ist gespeichert." : "Noch kein Schlüssel gespeichert.";
+}
+
+function snapShow(html) {
+  const box = document.getElementById("snap-result");
+  box.hidden = !html;
+  box.innerHTML = html;
+}
+
+// Bild verkleinern (lange Seite max. 1568 px) und als JPEG kodieren
+async function snapPrepare(blob) {
+  const bmp = await createImageBitmap(blob);
+  const scale = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const url = canvas.toDataURL("image/jpeg", 0.85);
+  return { url, b64: url.slice(url.indexOf(",") + 1) };
+}
+
+let snapSdk = null;
+let snapBusy = false;
+
+function snapErrorText(err) {
+  const status = err?.status;
+  const msg = String(err?.error?.error?.message ?? err?.message ?? "");
+  if (status === 401) return "Der API-Schlüssel wird nicht akzeptiert. Bitte in den Einstellungen prüfen.";
+  if (status === 403) return "Der API-Schlüssel hat keine Berechtigung für diese Anfrage.";
+  if (status === 429) return "Gerade zu viele Anfragen. In ein paar Sekunden noch einmal versuchen.";
+  if (/credit balance/i.test(msg)) return "Auf deinem Anthropic-Konto ist kein Guthaben mehr. Bitte in der Console aufladen.";
+  if (status >= 500) return "Der Anthropic-Dienst antwortet gerade nicht. Gleich noch einmal versuchen.";
+  if (!status) return "Keine Verbindung zum Anthropic-Dienst. Internetverbindung prüfen.";
+  return `Fehler bei der Erkennung: ${msg || status}`;
+}
+
+// Aus dem Ergebnis eine Suchanfrage bauen; erst genau, dann schrittweise lockerer
+function snapQueries(card) {
+  const name = (card.pokemon_de || card.pokemon_en || card.card_name || "").trim();
+  if (!name) return [];
+  const printed = fold(card.card_name);
+  const mods = ["ex", "vmax", "vstar", "gx"].filter((m) => printed.split(" ").includes(m));
+  const mega = printed.split(" ").includes("mega") ? "Mega" : "";
+  const lang = SNAP_LANG_WORD[card.language] ?? "";
+  const num = (card.number || "").replace(/^[A-Z]{2,5}\s+/i, "").trim();
+  const base = [mega, name, ...mods].filter(Boolean).join(" ");
+  const out = [
+    [base, lang, num],
+    [base, lang],
+    [base, num],
+    [name, lang],
+    [base],
+    [card.pokemon_en || name],
+  ].map((parts) => parts.filter(Boolean).join(" ").trim());
+  return [...new Set(out)].filter(Boolean);
+}
+
+function snapApply(card) {
+  for (const q of snapQueries(card)) {
+    if (quickSearch(q).list.length) {
+      document.getElementById("quick-input").value = q;
+      lastManualInput = Date.now(); // Mithören überschreibt das Ergebnis nicht sofort
+      renderQuick();
+      return q;
+    }
+  }
+  return null;
+}
+
+async function snapRecognize(blob) {
+  if (snapBusy) return;
+  const key = snapGet("snapKey", "");
+  if (view !== "quick") document.getElementById("view-quick").click();
+  if (!key) {
+    document.getElementById("snap-settings").hidden = false;
+    document.getElementById("snap-settings-btn").setAttribute("aria-expanded", "true");
+    snapShow('<p class="snap-msg">Für die Bilderkennung zuerst unten deinen Claude API-Schlüssel eintragen und speichern.</p>');
+    return;
+  }
+  snapBusy = true;
+  const t0 = performance.now();
+  try {
+    const img = await snapPrepare(blob);
+    snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg"><span class="spinner" aria-hidden="true"></span> Karte wird erkannt …</p>`);
+    quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+    snapSdk ??= (await import(SNAP_SDK)).default;
+    const client = new snapSdk({ apiKey: key, dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 60_000 });
+    const model = SNAP_MODELS[snapGet("snapMode", "exact")] ?? SNAP_MODELS.exact;
+    const params = {
+      model,
+      max_tokens: 4000,
+      system: SNAP_SYSTEM,
+      output_config: { effort: "low", format: { type: "json_schema", schema: SNAP_SCHEMA } },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: img.b64 } },
+          { type: "text", text: "Welche Pokémon-Karte ist hier zu sehen?" },
+        ],
+      }],
+    };
+    // Bei Opus 5.5: Server-seitiger Fallback, falls ein Sicherheitsfilter fälschlich ablehnt
+    const res = model === SNAP_MODELS.exact
+      ? await client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
+      : await client.messages.create(params);
+    if (res.stop_reason === "refusal") throw Object.assign(new Error("Die Anfrage wurde abgelehnt."), { status: 0, refusal: true });
+    const text = res.content.find((b) => b.type === "text")?.text ?? "";
+    const cards = JSON.parse(text).cards ?? [];
+    await quickLoading;
+    const secs = ((performance.now() - t0) / 1000).toFixed(1).replace(".", ",");
+    if (!cards.length) {
+      snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg">Auf dem Bild wurde keine Karte erkannt (${secs} s). Am besten einen Screenshot machen, wenn die Karte groß im Bild ist.</p>`);
+      return;
+    }
+    const first = cards[0];
+    const query = snapApply(first);
+    const desc = [first.card_name || first.pokemon_de, first.number && `Nr. ${first.number}`, first.set_hint, SNAP_LANG_WORD[first.language] && LANG_LABEL[first.language === "zh" ? "zh" : first.language]]
+      .filter(Boolean).map(esc).join(" · ");
+    const others = cards.slice(1).map((c) => snapQueries(c)[0]).filter(Boolean);
+    snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild">
+      <div class="snap-msg"><b>Erkannt:</b> ${desc} <span class="snap-conf">(${SNAP_CONF[first.confidence] ?? ""}, ${secs} s)</span>
+      ${query ? "" : "<br>Diese Karte ist nicht in der Datenbank. Bitte den Namen unten anpassen."}</div>
+      ${others.length ? `<div class="listen-history">${others.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}`);
+    if (!query) document.getElementById("quick-input").value = first.pokemon_de || first.pokemon_en || "";
+  } catch (err) {
+    console.error(err);
+    snapShow(`<p class="snap-msg snap-err">${esc(err.refusal ? "Die Erkennung hat das Bild abgelehnt. Bitte ein anderes Bild versuchen." : snapErrorText(err))}</p>`);
+  } finally {
+    snapBusy = false;
+  }
+}
+
+function snapFromItems(items) {
+  for (const it of items ?? []) {
+    const f = it.kind === "file" ? it.getAsFile() : it instanceof File ? it : null;
+    if (f && f.type.startsWith("image/")) return f;
+  }
+  return null;
+}
+
+// Über das Android-Teilen-Menü geschicktes Bild (siehe sw.js)
+async function snapFromShare() {
+  if (!new URLSearchParams(location.search).has("geteilt")) return;
+  try { history.replaceState(null, "", location.pathname + "#suche"); } catch {}
+  try {
+    const cache = await caches.open("geteilt");
+    const res = await cache.match("bild");
+    if (!res) return;
+    await cache.delete("bild");
+    snapRecognize(await res.blob());
+  } catch {}
+}
+
+function snapInit() {
+  snapRenderSettings();
+  document.getElementById("snap-file").addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) snapRecognize(f);
+  });
+  document.getElementById("snap-settings-btn").addEventListener("click", (e) => {
+    const box = document.getElementById("snap-settings");
+    box.hidden = !box.hidden;
+    e.currentTarget.setAttribute("aria-expanded", String(!box.hidden));
+  });
+  document.getElementById("snap-key").addEventListener("focus", (e) => { if (e.target.dataset.saved) e.target.value = ""; });
+  document.getElementById("snap-save").addEventListener("click", () => {
+    const input = document.getElementById("snap-key");
+    const val = input.value.trim();
+    if (val && !val.startsWith("••")) {
+      if (!/^sk-ant-/.test(val)) { document.getElementById("snap-key-state").textContent = "Das sieht nicht wie ein Claude API-Schlüssel aus (beginnt mit sk-ant-)."; return; }
+      snapSet("snapKey", val);
+    }
+    const ok = snapSet("snapMode", document.querySelector('input[name="snap-mode"]:checked').value);
+    snapRenderSettings();
+    document.getElementById("snap-key-state").textContent = ok ? "Gespeichert." : "Speichern nicht möglich (privates Fenster?).";
+    if (ok && snapGet("snapKey", "")) setTimeout(() => {
+      document.getElementById("snap-settings").hidden = true;
+      document.getElementById("snap-settings-btn").setAttribute("aria-expanded", "false");
+    }, 900);
+  });
+  document.getElementById("snap-clear").addEventListener("click", () => {
+    snapSet("snapKey", null);
+    snapRenderSettings();
+  });
+  document.getElementById("snap-result").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-q]");
+    if (!b) return;
+    document.getElementById("quick-input").value = b.dataset.q;
+    renderQuick();
+  });
+  // Einfügen (Strg+V) und Drag & Drop
+  document.addEventListener("paste", (e) => {
+    const f = snapFromItems(e.clipboardData?.items);
+    if (f) { e.preventDefault(); snapRecognize(f); }
+  });
+  const zone = document.getElementById("quick");
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drop"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drop"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drop");
+    const f = snapFromItems(e.dataTransfer?.files);
+    if (f) snapRecognize(f);
+  });
+  snapFromShare();
+}
+
 const pricedSets = () => data.sets.filter((s) => !s.pending);
 
 async function init() {
@@ -987,7 +1294,8 @@ async function init() {
   let t;
   document.getElementById("search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { shown = PAGE; render(); }, 150); });
 }
-init();
+init().then(snapInit, snapInit);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
 </html>

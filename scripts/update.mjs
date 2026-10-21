@@ -112,8 +112,11 @@ async function loadSets() {
     ids.push(...serie.data.sets.map((x) => x.id));
   }
   const sets = await mapLimit(ids, CONCURRENCY, (id) => getLocalized(`sets/${encodeURIComponent(id)}`));
+  // Promo-Sets (svp, swshp, mep …) nur für die Schnellsuche, nicht für die Top-30-Listen
+  promoSets = sets.filter((s) => s && /p$/i.test(s.data.id) && s.data.cards?.length).map((s) => s.data);
   return sets.filter((s) => s && isWantedSet(s.data)).map((s) => s.data);
 }
+let promoSets = [];
 
 // Ersatzquelle pokemontcg.io (ebenfalls Cardmarket-Preise) für Sets, die TCGdex
 // noch nicht mit Cardmarket verknüpft hat. Liefert Map: Kartennummer -> Preisdaten.
@@ -398,6 +401,10 @@ async function main() {
       allSets[allSets.length - 1] = { ...built, pending: true };
       result.push({ ...built, pending: true, cardTotal: (set.cards?.length ?? 0) + (set.extraCards?.length ?? 0) });
     }
+  }
+  for (const promo of promoSets) {
+    const built = await buildSet(promo);
+    allSets.push({ ...built, promo: true });
   }
   const totalCards = result.reduce((n, s) => n + s.cards.length, 0);
   if (totalCards === 0) throw new Error("Keine Preise gefunden – API-Antwort prüfen");
