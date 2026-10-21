@@ -150,6 +150,18 @@ async function buildSet(set) {
   };
 }
 
+// Schreibt ins Log, warum ein Set keine Preise hat (z. B. ganz neue Sets).
+async function explainMissing(set) {
+  const cards = [...(set.cards ?? []), ...(set.extraCards ?? [])];
+  console.warn(`  Karten laut TCGdex: ${cards.length}, cardCount: ${JSON.stringify(set.cardCount)}`);
+  for (const brief of cards.slice(0, 3)) {
+    for (const lang of ["de", "en"]) {
+      const c = await getJson(`${API}/${lang}/cards/${encodeURIComponent(brief.id)}`);
+      console.warn(`  ${lang} ${brief.id} ${c?.name ?? "(fehlt)"}: pricing=${JSON.stringify(c?.pricing ?? null).slice(0, 300)}`);
+    }
+  }
+}
+
 async function main() {
   const sets = await loadSets();
   if (sets.length === 0) throw new Error("Keine Sets gefunden – API-Antwort prüfen");
@@ -168,7 +180,10 @@ async function main() {
   for (const set of mainSets) {
     const built = await buildSet(set);
     if (built.cards.length) result.push(built);
-    else console.warn(`${set.name} (${set.id}): noch keine Preise – ausgelassen`);
+    else {
+      console.warn(`${set.name} (${set.id}): noch keine Preise – ausgelassen`);
+      await explainMissing(set);
+    }
   }
   const totalCards = result.reduce((n, s) => n + s.cards.length, 0);
   if (totalCards === 0) throw new Error("Keine Preise gefunden – API-Antwort prüfen");
