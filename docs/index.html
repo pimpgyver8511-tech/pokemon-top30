@@ -153,6 +153,10 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   font: inherit; font-size: .85rem; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--foil); background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink);
 }
+.listen-log { font-size: .85rem; color: var(--muted); }
+.listen-log summary { cursor: pointer; font-weight: 700; color: var(--ink); }
+.listen-log ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 3px; }
+.listen-log b { color: var(--up); }
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
 .qcard {
@@ -228,6 +232,10 @@ html { scroll-behavior: smooth; }
       </div>
       <p id="listen-status" class="listen-status" hidden></p>
       <div id="listen-history" class="listen-history" hidden></div>
+      <details id="listen-log" class="listen-log" hidden>
+        <summary>Was gehört wurde</summary>
+        <ol id="listen-log-list"></ol>
+      </details>
       <input id="quick-input" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
         placeholder="z. B. Dragonite deutsch oder Glurak japanisch">
       <p class="quick-hint" id="quick-hint">Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.</p>
@@ -615,10 +623,49 @@ let rec = null;
 let listening = false;
 let lastHit = { key: "", at: 0 };
 const heardHistory = [];
-let lastManualInput = 0; // wann zuletzt selbst getippt wurde
+const heardLog = [];      // Protokoll "Was gehört wurde"
+let lastManualInput = 0;  // wann zuletzt selbst getippt wurde
+let lastEventAt = 0;      // für den Wächter
+let watchdog = null;
+let usePhrases = true;
 
 // Für gesprochene Sprache nur eindeutige Sprachwörter (z. B. nicht "ja")
 const SPOKEN_LANG = new Map([...LANG_OF].filter(([w]) => w.length >= 6));
+
+// Häufige deutsche Alltagswörter: lösen nie eine unscharfe Namenserkennung aus
+const STOP = new Set(`aber alle allem allen aller alles also alt alte am an andere anderen auch auf aus bei beim bin bis bitte bleibt da dabei dafur damit dann danke das dass dein deine dem den denn der des deshalb dich die dies diese diesem diesen dieser dieses dir doch dort du durch eben echt egal eigentlich ein eine einem einen einer eines einfach einmal er es etwa etwas euch euer eure fur gab gar geben gehen geht genau gerade gern gerne gibt ging gleich gut gute guten habe haben hast hat hatte hatten heute hier hin hinter hoch ich ihm ihn ihr ihre im immer in ins ist ja jede jeden jeder jetzt kann kannst kaum kein keine kommt konnen konnte lass lasst leute los machen macht mal man mehr mein meine mich mir mit morgen muss mussen nach nachste nachsten naja nein neu neue neuen nicht nichts noch nun nur ob oder ohne okay schon schau schaut schon sehr sein seine sich sie sind so solche soll sollen sondern sowas super toll uber um und uns unser unsere unter viel viele vielen vom von vor war waren warum was weil weiter weiß weiss welche wenn wer werden wie wieder will wir wird wirklich wo wollen wurde wurden zu zum zur zwei drei vier funf sechs sieben acht neun zehn karte karten pack packs booster euro preis start startet geboten gebot danke hallo leute chat stream mega gut schone schones schoner sammlung display`.split(" "));
+
+// Zusätze, die die Suche verfeinern, wenn sie direkt beim Namen fallen
+const MODIFIERS = new Map([["ex", "ex"], ["vmax", "vmax"], ["vstar", "vstar"], ["gx", "gx"], ["mega", "mega"]]);
+
+// Kölner Phonetik: Wörter, die auf Deutsch gleich klingen, bekommen denselben Code
+function koeln(word) {
+  const w = word.toLowerCase().replace(/ß/g, "s").normalize("NFD").replace(/[^a-z]/g, "");
+  let code = "";
+  for (let i = 0; i < w.length; i++) {
+    const c = w[i], prev = w[i - 1] ?? "", next = w[i + 1] ?? "";
+    let d = "";
+    if ("aeijouy".includes(c)) d = "0";
+    else if (c === "h") d = "";
+    else if (c === "b") d = "1";
+    else if (c === "p") d = next === "h" ? "3" : "1";
+    else if (c === "d" || c === "t") d = next && "csz".includes(next) ? "8" : "2";
+    else if ("fvw".includes(c)) d = "3";
+    else if ("gkq".includes(c)) d = "4";
+    else if (c === "c") {
+      if (i === 0) d = next && "ahkloqrux".includes(next) ? "4" : "8";
+      else d = next && "ahkoqux".includes(next) && !"sz".includes(prev) ? "4" : "8";
+    } else if (c === "x") d = prev && "ckq".includes(prev) ? "8" : "48";
+    else if (c === "l") d = "5";
+    else if (c === "m" || c === "n") d = "6";
+    else if (c === "r") d = "7";
+    else if (c === "s" || c === "z") d = "8";
+    code += d;
+  }
+  let out = "";
+  for (const ch of code) if (ch !== out[out.length - 1]) out += ch;
+  return out ? out[0] + out.slice(1).replace(/0/g, "") : "";
+}
 
 function editDistance(a, b, max) {
   if (Math.abs(a.length - b.length) > max) return max + 1;
@@ -636,30 +683,94 @@ function editDistance(a, b, max) {
   return prev[b.length];
 }
 
-let latinAliases = null;
-function speciesFromSpeech(text) {
+// Namens-Tabelle nur aus deutschen und englischen Namen (Streams sind auf Deutsch)
+let speech = null;
+function buildSpeechIndex() {
+  const exact = new Map();   // "nachtara" -> id
+  const byCode = new Map();  // Kölner Code -> [[name, id]]
+  for (const [id, label] of speciesLabel) {
+    for (const raw of [label.de, label.en]) {
+      if (!raw) continue;
+      const compact = fold(raw).replace(/ /g, "");
+      if (compact.length < 3 || STOP.has(compact)) continue;
+      if (!exact.has(compact)) exact.set(compact, id);
+      const k = koeln(compact);
+      if (compact.length >= 5 && k.length >= 3) {
+        if (!byCode.has(k)) byCode.set(k, []);
+        byCode.get(k).push([compact, id]);
+      }
+    }
+  }
+  // Set-Namen: eindeutige Wörter (z. B. "prismatische", "reisegefahrten", "151")
+  const wordCount = new Map();
+  const intlSets = quickData.sets.filter((s) => !s.L);
+  for (const s of intlSets) for (const w of new Set(fold(s.name).split(" "))) wordCount.set(w, (wordCount.get(w) ?? 0) + 1);
+  const setWords = new Map();
+  for (const s of intlSets) {
+    for (const w of new Set(fold(s.name).split(" "))) {
+      if (wordCount.get(w) === 1 && !STOP.has(w) && (w.length >= 6 || /^\d{3}$/.test(w))) setWords.set(w, w);
+    }
+  }
+  speech = { exact, byCode, setWords, aliases: [...exact] };
+}
+
+// Findet in einem Satz Pokémon (auch falsch verstanden), Zusätze, Sprache und Set
+function analyzeSpeech(text) {
+  speech ?? buildSpeechIndex();
   const tokens = fold(text).split(" ").filter(Boolean);
-  latinAliases ??= [...speciesAlias].filter(([a]) => /^[a-z ]+$/.test(a) && a.length >= 5);
-  const found = [];
-  let lang = null;
+  const hits = []; // { id, at, mods: [] }
+  let lang = null, setWord = null;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (SPOKEN_LANG.has(t)) { lang = SPOKEN_LANG.get(t); continue; }
-    const two = i + 1 < tokens.length ? `${t} ${tokens[i + 1]}` : null;
-    if (two && speciesAlias.has(two)) { found.push(speciesAlias.get(two)); i++; continue; }
-    if (speciesAlias.has(t) && t.length >= 3) { found.push(speciesAlias.get(t)); continue; }
-    // Ungenau verstandene Namen (z. B. "glurack" statt "glurak")
-    if (t.length >= 5) {
-      const max = t.length >= 8 ? 2 : 1;
-      let best = null;
-      for (const [a, id] of latinAliases) {
-        const d = editDistance(t, a, max);
-        if (d <= max && (!best || d < best[0])) best = [d, id];
+    if (speech.setWords.has(t)) setWord = t;
+    let found = null, used = 1;
+    for (let n = 3; n >= 1 && !found; n--) {
+      if (i + n > tokens.length) continue;
+      const parts = tokens.slice(i, i + n);
+      // Zusammengesetzte Teile ("Nacht Ara") nur ohne Füllwörter
+      if (n > 1 && parts.some((p) => STOP.has(p) || p.length < 2)) continue;
+      if (n === 1 && STOP.has(t)) break;
+      const cand = parts.join("");
+      if (speech.exact.has(cand)) { found = speech.exact.get(cand); used = n; break; }
+      if (cand.length < 5) continue;
+      // gleich klingend (Kölner Phonetik) und nicht zu weit weg geschrieben
+      const list = speech.byCode.get(koeln(cand));
+      if (list) {
+        let best = null;
+        // Erlaubte Abweichung je nach Namenslänge: kurze Namen müssen fast exakt passen
+        for (const [name, id] of list) {
+          const max = name.length <= 6 ? 1 : name.length <= 9 ? 2 : 3;
+          const d = editDistance(cand, name, max);
+          if (d <= max && (!best || d < best[0])) best = [d, id];
+        }
+        if (best) { found = best[1]; used = n; break; }
       }
-      if (best) found.push(best[1]);
+      // kleine Hör- oder Tippfehler
+      if (n === 1) {
+        const max = cand.length >= 8 ? 2 : 1;
+        let best = null;
+        for (const [name, id] of speech.aliases) {
+          if (name.length < 5) continue;
+          const d = editDistance(cand, name, max);
+          if (d <= max && (!best || d < best[0])) best = [d, id];
+        }
+        if (best) { found = best[1]; used = 1; }
+      }
+    }
+    if (found) {
+      const mods = [];
+      const before = tokens[i - 1];
+      if (before && MODIFIERS.get(before) === "mega") mods.push("mega");
+      const a1 = tokens[i + used], a2 = tokens[i + used + 1];
+      const joined = a1 && a2 ? MODIFIERS.get(a1 + a2) : null; // "v max" -> vmax
+      const m = joined ?? MODIFIERS.get(a1) ?? (a2 ? MODIFIERS.get(a2) : null);
+      if (m && m !== "mega") mods.push(m);
+      hits.push({ id: found, mods });
+      i += used - 1;
     }
   }
-  return { ids: [...new Set(found)], lang };
+  return { hits, lang, setWord };
 }
 
 function setListenStatus(html) {
@@ -668,18 +779,28 @@ function setListenStatus(html) {
   el.innerHTML = html;
 }
 
-function showHeard(ids, lang) {
-  const id = ids[ids.length - 1]; // zuletzt genanntes Pokémon
-  const label = speciesLabel.get(id);
+function renderLog() {
+  const box = document.getElementById("listen-log");
+  box.hidden = !heardLog.length;
+  document.getElementById("listen-log-list").innerHTML = heardLog
+    .map((l) => `<li>${esc(l.text)}${l.found ? ` <b>→ ${esc(l.found)}</b>` : ""}</li>`)
+    .join("");
+}
+
+function applyHeard({ hits, lang, setWord }) {
+  const hit = hits[hits.length - 1]; // zuletzt genanntes Pokémon
+  const label = speciesLabel.get(hit.id);
   const name = label?.de ?? label?.en;
-  if (!name) return;
-  const key = `${id}|${lang ?? ""}`;
+  if (!name) return null;
+  const parts = [hit.mods.includes("mega") ? "Mega" : "", name, ...hit.mods.filter((m) => m !== "mega")];
+  if (lang) parts.push(LANG_WORDS[lang][0]);
+  if (setWord) parts.push(setWord);
+  const query = parts.filter(Boolean).join(" ");
   const now = Date.now();
-  if (key === lastHit.key && now - lastHit.at < 15000) return; // nicht ständig neu auslösen
-  lastHit = { key, at: now };
-  const query = lang ? `${name} ${LANG_WORDS[lang][0]}` : name;
+  if (query === lastHit.key && now - lastHit.at < 15000) return query; // nicht ständig neu auslösen
+  lastHit = { key: query, at: now };
   // Wer gerade selbst tippt, wird nicht überschrieben: dann nur in den Verlauf
-  if (Date.now() - lastManualInput > 8000) {
+  if (now - lastManualInput > 8000) {
     document.getElementById("quick-input").value = query;
     renderQuick();
   }
@@ -690,6 +811,79 @@ function showHeard(ids, lang) {
   const hist = document.getElementById("listen-history");
   hist.hidden = false;
   hist.innerHTML = heardHistory.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("");
+  return query;
+}
+
+function handleResults(e) {
+  lastEventAt = Date.now();
+  // Jede Alternative der letzten Sätze getrennt prüfen, die beste gewinnt
+  // Nur neue oder gerade veränderte Sätze auswerten (plus den davor für Zusammenhang)
+  const from = Math.max(0, (e.resultIndex ?? 0) - 1);
+  const recent = Array.from(e.results).slice(Math.max(from, e.results.length - 3));
+  const alts = Math.max(...recent.map((r) => r.length));
+  let result = null;
+  for (let k = 0; k < alts && !result; k++) {
+    const text = recent.map((r) => (r[k] ?? r[0]).transcript).join(" ");
+    const a = analyzeSpeech(text);
+    if (a.hits.length) result = a;
+  }
+  const lastRes = e.results[e.results.length - 1];
+  const last = lastRes[0].transcript.trim();
+  setListenStatus(`Höre zu … zuletzt verstanden: <b>${esc(last.slice(-80))}</b>`);
+  const query = result ? applyHeard(result) : null;
+  if (lastRes.isFinal && last) {
+    heardLog.unshift({ text: last, found: query });
+    heardLog.length = Math.min(heardLog.length, 12);
+    renderLog();
+  }
+}
+
+function phraseList() {
+  // Kontext-Hinweise für die Spracherkennung (nur wo der Browser das kann): wertvolle Pokémon zuerst
+  const best = new Map();
+  for (const c of quickData.cards) for (const id of c.p ?? []) best.set(id, Math.max(best.get(id) ?? 0, c.a30 ?? 0));
+  return [...best].sort((a, b) => b[1] - a[1]).slice(0, 300)
+    .map(([id]) => speciesLabel.get(id)?.de).filter(Boolean);
+}
+
+function makeRecognizer() {
+  const r = new Recognition();
+  r.lang = "de-DE"; // Streams laufen auf Deutsch
+  r.continuous = true;
+  r.interimResults = true;
+  r.maxAlternatives = 5;
+  if (usePhrases && "phrases" in r && window.SpeechRecognitionPhrase) {
+    try { r.phrases = phraseList().map((p) => new SpeechRecognitionPhrase(p, 5.0)); } catch { usePhrases = false; }
+  }
+  r.onresult = handleResults;
+  r.onspeechstart = r.onaudiostart = () => { lastEventAt = Date.now(); };
+  r.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      setListenStatus("Kein Zugriff aufs Mikrofon oder Neustart blockiert. Bitte noch einmal auf „Mithören starten“ tippen und das Mikrofon erlauben.");
+      stopListening();
+    } else if (e.error === "phrases-not-supported") {
+      usePhrases = false; // ohne Hinweise neu starten
+      restartRecognizer();
+    } else if (e.error !== "no-speech" && e.error !== "aborted") {
+      setListenStatus(`Spracherkennung meldet: ${esc(e.error)}. Versuche es weiter …`);
+    }
+  };
+  r.onend = () => {
+    // Browser beenden die Erkennung nach Pausen von selbst: neu starten, solange "Mithören" an ist
+    if (listening && r === rec) setTimeout(() => { if (listening && r === rec) { try { r.start(); } catch { restartRecognizer(); } } }, 250);
+  };
+  return r;
+}
+
+function restartRecognizer() {
+  if (!listening) return;
+  const old = rec;
+  rec = makeRecognizer();
+  try { old?.abort(); } catch {}
+  try { rec.start(); lastEventAt = Date.now(); } catch {
+    setListenStatus("Die Erkennung wurde vom Handy angehalten. Bitte noch einmal auf „Mithören starten“ tippen.");
+    stopListening();
+  }
 }
 
 async function startListening() {
@@ -699,44 +893,29 @@ async function startListening() {
   }
   quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
   await quickLoading;
-  const r = (rec = new Recognition());
-  rec.lang = "de-DE"; // Streams laufen auf Deutsch
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.maxAlternatives = 3;
-  rec.onresult = (e) => {
-    let text = "";
-    for (let i = Math.max(0, e.results.length - 3); i < e.results.length; i++) {
-      for (let k = 0; k < e.results[i].length; k++) text += " " + e.results[i][k].transcript;
-    }
-    const last = e.results[e.results.length - 1][0].transcript;
-    setListenStatus(`Höre zu … zuletzt verstanden: <b>${esc(last.trim().slice(-80))}</b>`);
-    const { ids, lang } = speciesFromSpeech(text);
-    if (ids.length) showHeard(ids, lang);
-  };
-  rec.onerror = (e) => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      setListenStatus("Kein Zugriff aufs Mikrofon. Bitte in den Browser-Einstellungen für diese Seite erlauben.");
-      stopListening();
-    } else if (e.error !== "no-speech" && e.error !== "aborted") {
-      setListenStatus(`Spracherkennung meldet: ${esc(e.error)}. Versuche es weiter …`);
-    }
-  };
-  rec.onend = () => {
-    // Browser beenden die Erkennung nach Pausen von selbst: neu starten, solange "Mithören" an ist
-    if (listening && r === rec) setTimeout(() => { if (listening && r === rec) try { r.start(); } catch {} }, 250);
-  };
+  if (!quickData) return;
   listening = true;
+  rec = makeRecognizer();
   const btn = document.getElementById("listen-btn");
   btn.setAttribute("aria-pressed", "true");
   btn.textContent = "Mithören stoppen";
   setListenStatus("Höre zu … sobald ein Pokémon-Name fällt, erscheint die Karte unten.");
   try { await navigator.wakeLock?.request("screen"); } catch {}
   try { rec.start(); } catch {}
+  lastEventAt = Date.now();
+  // Wächter: kommt 20 Sekunden nichts an, Erkennung neu starten
+  clearInterval(watchdog);
+  watchdog = setInterval(() => {
+    if (listening && Date.now() - lastEventAt > 20000) {
+      setListenStatus("Länger nichts gehört, Erkennung wird neu gestartet …");
+      restartRecognizer();
+    }
+  }, 5000);
 }
 
 function stopListening() {
   listening = false;
+  clearInterval(watchdog);
   try { rec?.stop(); } catch {}
   const btn = document.getElementById("listen-btn");
   btn.setAttribute("aria-pressed", "false");
