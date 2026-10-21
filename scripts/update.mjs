@@ -18,7 +18,10 @@ const cutoffIso = cutoff.toISOString().slice(0, 10);
 async function getJson(url, tries = 4) {
   for (let i = 1; ; i++) {
     try {
-      const res = await fetch(url, { headers: { "User-Agent": "pokemon-top30 (GitHub Actions)" } });
+      const res = await fetch(url, {
+        headers: { "User-Agent": "pokemon-top30 (GitHub Actions)" },
+        signal: AbortSignal.timeout(60_000),
+      });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
@@ -107,7 +110,52 @@ async function loadSets() {
   return sets.filter((s) => s && isWantedSet(s.data)).map((s) => s.data);
 }
 
-async function buildSet(set) {
+// Ersatzquelle pokemontcg.io (ebenfalls Cardmarket-Preise) für Sets, die TCGdex
+// noch nicht mit Cardmarket verknüpft hat. Liefert Map: Kartennummer -> Preisdaten.
+const PTCG = process.env.PTCG_API ?? "https://api.pokemontcg.io/v2";
+const normNo = (no) => String(no ?? "").replace(/^0+(?=\w)/, "").toUpperCase();
+
+async function pokemontcgPrices(set) {
+  try {
+    const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`);
+    const name = en?.name ?? set.name;
+    const found = await getJson(`${PTCG}/sets?q=${encodeURIComponent(`name:"${name}"`)}`);
+    const candidates = found?.data ?? [];
+    const match =
+      candidates.find((x) => x.releaseDate?.replaceAll("/", "-") === set.releaseDate) ?? candidates[0];
+    if (!match) {
+      console.warn(`  pokemontcg.io: kein Set "${name}" gefunden`);
+      return null;
+    }
+    const map = new Map();
+    for (let page = 1; page <= 4; page++) {
+      const q = encodeURIComponent(`set.id:${match.id}`);
+      const res = await getJson(`${PTCG}/cards?q=${q}&page=${page}&pageSize=250&select=id,number,cardmarket,images`);
+      for (const c of res?.data ?? []) map.set(normNo(c.number), c);
+      if (!res || page * 250 >= (res.totalCount ?? 0)) break;
+    }
+    const priced = [...map.values()].filter((c) => isNum(c.cardmarket?.prices?.avg30)).length;
+    console.log(`  pokemontcg.io: Set ${match.id} "${match.name}", ${map.size} Karten, ${priced} mit Cardmarket-Preis`);
+    return map;
+  } catch (err) {
+    console.warn(`  pokemontcg.io nicht erreichbar: ${err.message}`);
+    return null;
+  }
+}
+
+function pickPtcgPrice(c) {
+  const p = c?.cardmarket?.prices;
+  if (!p) return null;
+  if (isNum(p.avg30) || isNum(p.avg7)) {
+    return { avg7: round(p.avg7), avg30: round(p.avg30), trend: round(p.trendPrice), variant: null };
+  }
+  if (isNum(p.reverseHoloAvg30)) {
+    return { avg7: round(p.reverseHoloAvg7), avg30: round(p.reverseHoloAvg30), trend: round(p.reverseHoloTrend), variant: "Reverse Holo" };
+  }
+  return null;
+}
+
+async function buildSet(set, fallback = null) {
   const all = [...(set.cards ?? []), ...(set.extraCards ?? [])];
   const cards = await mapLimit(all, CONCURRENCY, async (brief) => {
     const res = await getLocalized(`cards/${encodeURIComponent(brief.id)}`);
@@ -122,8 +170,15 @@ async function buildSet(set) {
       idProduct ??= en?.pricing?.cardmarket?.idProduct;
       image ??= en?.image;
     }
+    let url = cardmarketUrl(idProduct, card.name);
+    const alt = fallback?.get(normNo(card.localId));
+    if (!price && alt) {
+      price = pickPtcgPrice(alt);
+      if (alt.cardmarket?.url) url = alt.cardmarket.url;
+    }
     if (!price || !isNum(price.avg30)) return null;
-    const imgs = imageUrls(image, card.id);
+    let imgs = imageUrls(image, card.id);
+    if (!imgs && alt?.images?.small) imgs = { thumb: alt.images.small, large: alt.images.large ?? alt.images.small };
     return {
       id: card.id,
       no: card.localId,
@@ -132,7 +187,7 @@ async function buildSet(set) {
       thumb: imgs?.thumb ?? null,
       large: imgs?.large ?? null,
       ...price,
-      url: cardmarketUrl(idProduct, card.name),
+      url,
     };
   });
   const top = cards
@@ -178,7 +233,12 @@ async function main() {
 
   const result = [];
   for (const set of mainSets) {
-    const built = await buildSet(set);
+    let built = await buildSet(set);
+    if (!built.cards.length) {
+      console.warn(`${set.name} (${set.id}): keine Preise bei TCGdex – versuche pokemontcg.io`);
+      const fallback = await pokemontcgPrices(set);
+      if (fallback?.size) built = await buildSet(set, fallback);
+    }
     if (built.cards.length) result.push(built);
     else {
       console.warn(`${set.name} (${set.id}): noch keine Preise – ausgelassen`);
