@@ -105,6 +105,7 @@ th {
 td.num, th.num { text-align: right; white-space: nowrap; }
 td.rank { color: var(--muted); width: 2.2em; text-align: right; }
 td.img { width: 64px; }
+td.img .no-img { display: grid; place-items: center; width: 52px; aspect-ratio: 245 / 342; border-radius: 3px; background: var(--line); color: var(--muted); font-weight: 700; }
 td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 3px; display: block; background: var(--line); }
 .card-name { font-weight: 700; }
 .card-sub { color: var(--muted); font-size: .8rem; }
@@ -125,7 +126,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 @media (max-width: 640px) {
   .hide-sm { display: none; }
   th, td { padding: 7px 6px; }
-  td.img img { width: 44px; }
+  td.img img, td.img .no-img { width: 44px; }
   .card-sub { font-size: .75rem; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
@@ -193,7 +194,7 @@ function cardRow(c, i, setName) {
   const hist = weekAgo?.[c.id] ? pct(c.avg30, weekAgo[c.id][1]) : null;
   const img = c.image
     ? `<a href="${esc(c.image)}/high.webp" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(c.name)}"><img loading="lazy" src="${esc(c.image)}/low.webp" alt="${esc(c.name)}"></a>`
-    : "";
+    : '<span class="no-img" aria-label="Kein Bild verfügbar">?</span>';
   const sub = [c.no ? `Nr. ${esc(c.no)}` : "", c.rarity ? esc(c.rarity) : "", c.variant ? esc(c.variant) : "", setName ? esc(setName) : ""]
     .filter(Boolean).join(" · ");
   return `<tr>

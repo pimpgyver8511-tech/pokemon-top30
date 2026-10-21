@@ -98,7 +98,8 @@ async function loadSets() {
 }
 
 async function buildSet(set) {
-  const cards = await mapLimit(set.cards ?? [], CONCURRENCY, async (brief) => {
+  const all = [...(set.cards ?? []), ...(set.extraCards ?? [])];
+  const cards = await mapLimit(all, CONCURRENCY, async (brief) => {
     const res = await getLocalized(`cards/${encodeURIComponent(brief.id)}`);
     const card = res?.data ?? brief;
     let price = pickPrice(card.pricing?.cardmarket);
@@ -140,11 +141,23 @@ async function buildSet(set) {
 async function main() {
   const sets = await loadSets();
   if (sets.length === 0) throw new Error("Keine Sets gefunden – API-Antwort prüfen");
-  sets.sort((a, b) => b.releaseDate.localeCompare(a.releaseDate));
-  console.log(`${sets.length} Sets seit ${cutoffIso}`);
+  // Trainer-Galerie (…tg) und Galar-Galerie (…gg) gehören auf Cardmarket zum Hauptset.
+  const byId = new Map(sets.map((s) => [s.id, s]));
+  const mainSets = [];
+  for (const s of sets) {
+    const parent = /(tg|gg)$/.test(s.id) ? byId.get(s.id.slice(0, -2)) : null;
+    if (parent) (parent.extraCards ??= []).push(...(s.cards ?? []));
+    else mainSets.push(s);
+  }
+  mainSets.sort((a, b) => b.releaseDate.localeCompare(a.releaseDate));
+  console.log(`${mainSets.length} Sets seit ${cutoffIso}`);
 
   const result = [];
-  for (const set of sets) result.push(await buildSet(set));
+  for (const set of mainSets) {
+    const built = await buildSet(set);
+    if (built.cards.length) result.push(built);
+    else console.warn(`${set.name} (${set.id}): noch keine Preise – ausgelassen`);
+  }
   const totalCards = result.reduce((n, s) => n + s.cards.length, 0);
   if (totalCards === 0) throw new Error("Keine Preise gefunden – API-Antwort prüfen");
 
