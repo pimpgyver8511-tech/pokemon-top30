@@ -598,7 +598,8 @@ function quickSearch(query) {
     if (q.num != null) {
       const sameNo = normNo(c.no) === q.num;
       if (sameNo) score += 10;
-      else if (!set._hay.includes(q.num.toLowerCase())) continue;
+      // Zahl kann auch der Set-Name sein (z. B. "151"), aber nur als ganzes Wort
+      else if (!set._hay.split(" ").includes(q.num.toLowerCase())) continue;
       if (q.total != null && sameNo && set.off === q.total) score += 5;
     }
     let ok = true;
