@@ -974,7 +974,8 @@ function stopListening() {
 const SNAP_MODELS = { exact: "claude-opus-5-5", fast: "claude-haiku-5-5" };
 const SNAP_SDK = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm";
 const SNAP_SYSTEM = `Du bekommst ein Bild aus einem Pokémon-TCG-Livestream (z. B. Whatnot) oder ein Foto einer Karte.
-Bestimme die Pokémon-Sammelkarte(n), die im Bild gezeigt werden. Ignoriere Chat-Nachrichten, App-Oberflächen, Bauchbinden und sonstigen Text, der nicht auf der Karte steht.
+Bestimme die Pokémon-Sammelkarte(n), die im Bild gezeigt werden. Ignoriere Chat-Nachrichten, Benutzernamen und Bedienelemente der App.
+Wichtig: Der Titel der laufenden Auktion (bei Whatnot unten über dem Gebot-Knopf, z. B. "Relaxo sealed Promo SVP 051 · New · German") nennt oft Name, Nummer und Sprache. Nutze ihn zusammen mit dem, was auf der Karte selbst zu lesen ist. Widersprechen sich Titel und Karte, gilt die Karte.
 Lies so genau wie möglich: den gedruckten Kartennamen (mit Zusätzen wie ex, VMAX, VSTAR, V, GX, Mega), die Kartennummer unten links (z. B. "199/165", "TG23", "SVP 027") und die Sprache des Aufdrucks.
 Nutze auch Attackennamen, Illustration und Seltenheitssymbol, um die Karte einzuordnen.
 Felder:
