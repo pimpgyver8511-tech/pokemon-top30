@@ -30,5 +30,6 @@ Zuletzt aktualisiert: 21.10.2026
 - Bei koreanischen und chinesischen Karten ist unklar, ob der Preis nur für diese Sprachversion gilt
 - Wenige koreanische Karten in der Datenquelle; viele asiatische Karten ohne Bild
 - „30 Jahre“-Sets: noch keine Cardmarket-Preise bei den Datenquellen, erscheinen automatisch
-- Ältere Karten (vor ca. 2021) sind nicht in der Datenbank. Die Bilderkennung warnt dann und verlinkt die Cardmarket-Suche.
-- Idee für später: ältere Sets (z. B. ab 2002) mit in die Schnellsuche aufnehmen
+- Ältere Karten (international seit 1999, japanisch seit 1996) sind in der Schnellsuche (docs/data/old.json, wird im Hintergrund nachgeladen). Die Top-30-Ansichten bleiben bei 5 Jahren.
+- Findet die Bilderkennung genau die Version nicht, erscheint ein Hinweis mit Link zur Cardmarket-Suche.
+- 1. Edition / Shadowless werden bei Cardmarket-Durchschnittspreisen nicht getrennt ausgewiesen.

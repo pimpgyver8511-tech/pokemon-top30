@@ -512,26 +512,32 @@ async function loadQuick() {
   indexCards(all.cards);
   for (const st of all.sets) st._hay = fold(st.name);
   quickData = all;
-  // Asiatische Karten im Hintergrund nachladen
+  // Asiatische und ältere Karten im Hintergrund nachladen (die aktuelle Suche geht schon)
   asiaState = "loading";
-  fetch("data/asia.json", { cache: "no-cache" })
+  oldState = "loading";
+  const merge = (part) => {
+    const off = quickData.sets.length;
+    for (const st of part.sets) { st._hay = fold(st.name); quickData.sets.push(st); }
+    for (const c of part.cards) c.s += off;
+    indexCards(part.cards);
+    quickData.cards.push(...part.cards);
+  };
+  const extra = (file, done) => fetch(file, { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : Promise.reject()))
-    .then((asia) => {
-      const off = quickData.sets.length;
-      for (const st of asia.sets) { st._hay = fold(st.name); quickData.sets.push(st); }
-      for (const c of asia.cards) c.s += off;
-      indexCards(asia.cards);
-      quickData.cards.push(...asia.cards);
-      asiaState = "ready";
-    })
-    .catch(() => { asiaState = "missing"; })
+    .then((part) => { merge(part); done("ready"); })
+    .catch(() => done("missing"))
     .finally(() => { updateQuickHint(); renderQuick(); });
+  extra("data/asia.json", (st) => { asiaState = st; })
+    .then(() => extra("data/old.json", (st) => { oldState = st; }));
 }
+let oldState = "idle";
 
 function updateQuickHint() {
   if (!quickData) return;
   const n = quickData.cards.length.toLocaleString("de-DE");
-  const extra = asiaState === "loading" ? " Japanische, koreanische und chinesische Karten werden noch geladen …" : "";
+  const extra = asiaState === "loading"
+    ? " Japanische, koreanische und chinesische Karten werden noch geladen …"
+    : oldState === "loading" ? " Ältere Karten (vor 2021) werden noch geladen …" : "";
   document.getElementById("quick-hint").textContent =
     `${n} Karten. Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.${extra}`;
 }
@@ -1075,14 +1081,23 @@ function snapQueries(card) {
   const lang = SNAP_LANG_WORD[card.language] ?? "";
   const num = (card.number || "").replace(/^[A-Z]{2,5}\s+/i, "").trim();
   const base = [mega, name, ...mods].filter(Boolean).join(" ");
+  // Ein markantes Wort aus dem Set-Namen (z. B. "expedition"), falls in der Datenbank vorhanden
+  const setWord = fold(card.set_hint).split(" ")
+    .filter((w) => w.length >= 4 && !["promo", "promos", "black", "star", "base", "set"].includes(w))
+    .sort((a, b) => b.length - a.length)
+    .find((w) => quickData?.sets.some((st) => st._hay.split(" ").includes(w))) ?? "";
+  // Nur Varianten mit tatsächlich vorhandener Nummer bzw. Set-Wort, sonst würde
+  // z. B. [name, sprache, ""] zur lockersten Suche und gewänne zu früh
   const out = [
-    [base, lang, num],
+    num && [base, lang, num],
+    setWord && [base, lang, setWord],
+    setWord && [base, setWord],
+    num && [base, num],
     [base, lang],
-    [base, num],
     [name, lang],
     [base],
     [card.pokemon_en || name],
-  ].map((parts) => parts.filter(Boolean).join(" ").trim());
+  ].filter(Boolean).map((parts) => parts.filter(Boolean).join(" ").trim());
   return [...new Set(out)].filter(Boolean);
 }
 
@@ -1094,7 +1109,10 @@ function snapApply(card) {
       lastManualInput = Date.now(); // Mithören überschreibt das Ergebnis nicht sofort
       renderQuick();
       // Genau getroffen nur, wenn die gelesene Nummer in der Suche steckt
-      return { query: q, exact: Boolean(num) && q.includes(num) };
+      const words = q.split(" ");
+      const setWords = fold(card.set_hint).split(" ").filter((w) => w.length >= 4);
+      // Genau: gelesene Nummer oder ein Set-Wort steckt in der erfolgreichen Suche
+      return { query: q, exact: (Boolean(num) && words.includes(num)) || words.some((w) => setWords.includes(w)) };
     }
   }
   return { query: null, exact: false };
@@ -1106,8 +1124,8 @@ function snapWarning(card, hit) {
   const cm = `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(card.card_name || name)}`;
   const link = `<a href="${esc(cm)}" target="_blank" rel="noopener">auf Cardmarket suchen ↗</a>`;
   const year = parseInt(card.year, 10);
-  if (year && year < new Date().getFullYear() - 5) {
-    return `<p class="snap-warn"><b>Achtung:</b> Die Karte ist von ${year}. Die Datenbank enthält nur Karten der letzten 5 Jahre, die Preise unten gehören zu <b>anderen</b> ${esc(name)}-Karten. Preis dieser Karte ${link}.</p>`;
+  if (year && year < new Date().getFullYear() - 5 && !hit.exact && oldState !== "ready") {
+    return `<p class="snap-warn"><b>Achtung:</b> Die Karte ist von ${year}, die älteren Karten sind noch nicht geladen. Die Preise unten können zu <b>anderen</b> ${esc(name)}-Karten gehören. Preis dieser Karte ${link}.</p>`;
   }
   if (!hit.query) return `<p class="snap-warn">Diese Karte ist nicht in der Datenbank. Preis ${link}.</p>`;
   if (!hit.exact) {
@@ -1156,6 +1174,10 @@ async function snapRecognize(blob) {
     const text = res.content.find((b) => b.type === "text")?.text ?? "";
     const cards = JSON.parse(text).cards ?? [];
     await quickLoading;
+    // Asiatische und ältere Karten werden im Hintergrund geladen: kurz darauf warten (max. 15 s)
+    for (let i = 0; i < 75 && (asiaState === "loading" || oldState === "loading"); i++) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
     const secs = ((performance.now() - t0) / 1000).toFixed(1).replace(".", ",");
     if (!cards.length) {
       snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg">Auf dem Bild wurde keine Karte erkannt (${secs} s). Am besten einen Screenshot machen, wenn die Karte groß im Bild ist.</p>`);

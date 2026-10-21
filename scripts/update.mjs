@@ -332,16 +332,67 @@ function speciesIndex(species) {
   return out;
 }
 
+// Gebaute Sets (aus buildSet) in die kompakte Form der Schnellsuche bringen
+function toSearchData(builtSets, tag) {
+  const sets = builtSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate }));
+  const cards = [];
+  builtSets.forEach((s, si) => {
+    for (const c of s.allCards) {
+      const row = { i: c.id, n: c.name, no: c.no, s: si };
+      if (c.enName) row.e = c.enName;
+      const p = [...new Set([...tag(c.name, "de"), ...(c.enName ? tag(c.enName, "en") : [])])];
+      if (p.length) row.p = p;
+      if (c.rarity) row.r = c.rarity;
+      if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
+      if (c.variant) row.v = c.variant;
+      if (c.thumb) row.img = c.thumb;
+      if (c.large && c.large !== c.thumb) row.big = c.large;
+      row.u = c.url;
+      for (const k of Object.keys(row)) if (row[k] == null) delete row[k];
+      cards.push(row);
+    }
+  });
+  return { sets, cards };
+}
+
+// ---------- Schnellsuche: ältere internationale Sets (seit 1999) ----------
+const SKIP_SERIES = new Set(["tcgp"]); // TCG Pocket ist digital, keine Sammelkarten
+
+async function loadOlderSets(knownIds) {
+  const seriesIds = new Set();
+  for (const lang of ["de", "en"]) {
+    for (const s of (await getJson(`${API}/${lang}/series`)) ?? []) if (!SKIP_SERIES.has(s.id)) seriesIds.add(s.id);
+  }
+  const setIds = new Set();
+  for (const id of seriesIds) {
+    const serie = await getLocalized(`series/${encodeURIComponent(id)}`);
+    for (const st of serie?.data?.sets ?? []) if (!knownIds.has(st.id)) setIds.add(st.id);
+  }
+  const details = await mapLimit([...setIds], CONCURRENCY, (id) => getLocalized(`sets/${encodeURIComponent(id)}`));
+  const sets = details.map((d) => d?.data).filter((d) => d?.cards?.length);
+  // Galerie-Teilsets (…tg / …gg) dem Hauptset zuordnen
+  const byId = new Map(sets.map((st) => [st.id, st]));
+  const out = [];
+  for (const st of sets) {
+    const parent = /(tg|gg)$/.test(st.id) ? byId.get(st.id.slice(0, -2)) : null;
+    if (parent) (parent.extraCards ??= []).push(...st.cards);
+    else out.push(st);
+  }
+  return out.sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""));
+}
+
 // ---------- Schnellsuche: japanische, koreanische und chinesische Karten ----------
 const ASIA_LANGS = ["ja", "ko", "zh-tw", "zh-cn"];
 
-async function buildAsia(lang, setOffset, tag) {
+async function buildAsia(lang, setOffset, tag, recent = true) {
   const sets = [];
   const cards = [];
   try {
     const list = (await getJson(`${API}/${lang}/sets`)) ?? [];
     const details = await mapLimit(list, CONCURRENCY, (s) => getJson(`${API}/${lang}/sets/${encodeURIComponent(s.id)}`));
-    const wanted = details.filter((d) => d?.releaseDate && d.releaseDate >= cutoffIso && d.cards?.length);
+    // recent: letzte 5 Jahre (asia.json), sonst alles Ältere seit 1996 (old.json)
+    const isRecent = (d) => Boolean(d.releaseDate) && d.releaseDate >= cutoffIso;
+    const wanted = details.filter((d) => d?.cards?.length && isRecent(d) === recent);
     for (const set of wanted) {
       const si = setOffset + sets.length;
       sets.push({ id: `${lang}:${set.id}`, name: set.name, off: set.cardCount?.official ?? null, date: set.releaseDate, L: lang });
@@ -362,7 +413,7 @@ async function buildAsia(lang, setOffset, tag) {
       });
       cards.push(...rows.filter(Boolean));
     }
-    console.log(`Asiatisch ${lang}: ${sets.length} Sets, ${cards.length} Karten, ${cards.filter((c) => c.a30).length} mit Preis`);
+    console.log(`Asiatisch ${lang}${recent ? "" : " (älter)"}: ${sets.length} Sets, ${cards.length} Karten, ${cards.filter((c) => c.a30).length} mit Preis`);
   } catch (err) {
     console.warn(`Asiatisch ${lang} übersprungen: ${err.message}`);
   }
@@ -424,24 +475,7 @@ async function main() {
   // Schnellsuche: alle Karten (auch ohne Preis) in kompakter Form.
   const species = await loadSpecies();
   const tag = makeSpeciesTagger(species);
-  const searchSets = allSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate }));
-  const searchCards = [];
-  allSets.forEach((s, si) => {
-    for (const c of s.allCards) {
-      const row = { i: c.id, n: c.name, no: c.no, s: si };
-      if (c.enName) row.e = c.enName;
-      const p = [...new Set([...tag(c.name, "de"), ...(c.enName ? tag(c.enName, "en") : [])])];
-      if (p.length) row.p = p;
-      if (c.rarity) row.r = c.rarity;
-      if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
-      if (c.variant) row.v = c.variant;
-      if (c.thumb) row.img = c.thumb;
-      if (c.large && c.large !== c.thumb) row.big = c.large;
-      row.u = c.url;
-      for (const k of Object.keys(row)) if (row[k] == null) delete row[k];
-      searchCards.push(row);
-    }
-  });
+  const { sets: searchSets, cards: searchCards } = toSearchData(allSets, tag);
   await writeFile(
     path.join(OUT_DIR, "all.json"),
     JSON.stringify({ updated: now.toISOString(), sets: searchSets, cards: searchCards }),
@@ -458,6 +492,25 @@ async function main() {
   }
   await writeFile(path.join(OUT_DIR, "asia.json"), JSON.stringify(asia));
   console.log(`Asiatische Karten gesamt: ${asia.cards.length}, mit Pokémon erkannt: ${asia.cards.filter((c) => c.p).length}`);
+
+  // Ältere Karten (international seit 1999, asiatisch seit 1996): eigene Datei, wird im Browser nachgeladen
+  try {
+    const known = new Set([...allSets.map((st) => st.id), ...sets.map((st) => st.id)]);
+    const olderSets = await loadOlderSets(known);
+    console.log(`Ältere internationale Sets: ${olderSets.length}`);
+    const builtOld = [];
+    for (const st of olderSets) builtOld.push(await buildSet(st));
+    const old = toSearchData(builtOld, tag);
+    for (const lang of ASIA_LANGS) {
+      const part = await buildAsia(lang, old.sets.length, tag, false);
+      old.sets.push(...part.sets);
+      old.cards.push(...part.cards);
+    }
+    await writeFile(path.join(OUT_DIR, "old.json"), JSON.stringify({ updated: now.toISOString(), ...old }));
+    console.log(`Ältere Karten gesamt: ${old.cards.length}, davon ${old.cards.filter((c) => c.a30).length} mit Preis`);
+  } catch (err) {
+    console.warn(`Ältere Karten übersprungen: ${err.message}`);
+  }
 
   // Kompakter Tages-Snapshot für Trends: { kartenId: [avg7, avg30] }
   const snapshot = {};
