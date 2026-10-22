@@ -28,14 +28,14 @@ Zuletzt aktualisiert: 22.10.2026
 - Erste echte Messung: Genau 6,5 s, Schnell 2,5 s; Kosten ca. 2 Cent für beide Versuche zusammen
 - Tempo-Optimierung: kleineres Bild (1280 px), „Schnell“ ohne Denkphase, SDK/Verbindung vorab, kein Warten auf alte Karten, Kartendaten im Handy-Zwischenspeicher
 - Nach der Optimierung gemessen: Schnell 2,2 s, Genau 4,4 s, Erkennung korrekt
+- Ausgabenlimit in der Anthropic Console auf 5 $ gesetzt
 - Erster automatischer Tageslauf erfolgreich (gestartet 12:12 Uhr statt 07:17 Uhr: GitHub verschiebt geplante Läufe bei hoher Last)
 
 ## Offen
 
-1. In der Anthropic Console unter Limits ein eigenes Monatslimit setzen (z. B. 10 $), Standard ist 500 $
-2. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
-3. Rückmeldung zum Mithören-Modus: Was steht unter „Was gehört wurde“, wenn ein Name nicht erkannt wird?
-4. Ab ca. 28.10. erscheint in den Set-Tabellen die Spalte „vs. Vorwoche“ (braucht 7 Tage Verlauf)
+1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
+2. Rückmeldung zum Mithören-Modus: Was steht unter „Was gehört wurde“, wenn ein Name nicht erkannt wird?
+3. Ab ca. 28.10. erscheint in den Set-Tabellen die Spalte „vs. Vorwoche“ (braucht 7 Tage Verlauf)
 
 ## Bekannte Grenzen
 
@@ -45,4 +45,5 @@ Zuletzt aktualisiert: 22.10.2026
 - „30 Jahre“-Sets: noch keine Cardmarket-Preise bei den Datenquellen, erscheinen automatisch
 - Ältere Karten (international seit 1999, japanisch seit 1996) sind in der Schnellsuche (docs/data/old.json, wird im Hintergrund nachgeladen). Die Top-30-Ansichten bleiben bei 5 Jahren.
 - Findet die Bilderkennung genau die Version nicht, erscheint ein Hinweis mit Link zur Cardmarket-Suche.
+- Teilen-Menü und Mithören funktionieren in Chrome (Android), nicht in Firefox; „Bild erkennen“ per Galerie geht in beiden
 - 1. Edition / Shadowless werden bei Cardmarket-Durchschnittspreisen nicht getrennt ausgewiesen.
