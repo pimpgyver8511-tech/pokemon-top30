@@ -94,7 +94,12 @@ function imageUrls(tcgdexImage, cardId) {
   return { thumb: `${base}.png`, large: `${base}_hires.png` };
 }
 
+// Sets, die immer in den Top 30 stehen sollen, auch wenn sie älter als 5 Jahre sind
+// (Celebrations zum 25-jährigen Jubiläum und die zugehörige Classic Collection)
+const EXTRA_TOP_SETS = ["cel25", "cel25c"];
+
 function isWantedSet(set) {
+  if (set && EXTRA_TOP_SETS.includes(set.id)) return Boolean(set.cards?.length);
   if (!set?.releaseDate || set.releaseDate < cutoffIso) return false;
   if (/p$/i.test(set.id)) return false; // Promo-Sets (swshp, svp, mep …)
   if (/promo|energie|energy/i.test(set.name ?? "")) return false;
@@ -111,6 +116,7 @@ async function loadSets() {
     }
     ids.push(...serie.data.sets.map((x) => x.id));
   }
+  for (const id of EXTRA_TOP_SETS) if (!ids.includes(id)) ids.push(id);
   const sets = await mapLimit(ids, CONCURRENCY, (id) => getLocalized(`sets/${encodeURIComponent(id)}`));
   // Promo-Sets (svp, swshp, mep …) nur für die Schnellsuche, nicht für die Top-30-Listen
   promoSets = sets.filter((s) => s && /p$/i.test(s.data.id) && s.data.cards?.length).map((s) => s.data);

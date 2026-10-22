@@ -5,7 +5,7 @@ Zuletzt aktualisiert: 22.10.2026
 ## Was fertig ist
 
 - **Seite:** https://pimpgyver8511-tech.github.io/pokemon-top30/ (GitHub Pages, täglich ca. 07:17 Uhr neue Preise)
-- **Nach Set:** Top 30 pro Set (Haupt- und Spezialsets der letzten 5 Jahre), sortierbar nach Ø 7 / Ø 30 Tage
+- **Nach Set:** Top 30 pro Set (Haupt- und Spezialsets der letzten 5 Jahre, dazu immer Celebrations / 25 Jahre), sortierbar nach Ø 7 / Ø 30 Tage
 - **Alle Sets zusammen:** Gesamtrangliste (`#rangliste`)
 - **Schnellsuche** (`#suche`):
   - Name in jeder Sprache + Sprache dahinter, z. B. „Dragonite deutsch“, „Glurak japanisch“
