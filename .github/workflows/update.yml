@@ -40,8 +40,12 @@ jobs:
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
           git add docs/data
           git diff --cached --quiet || git commit -m "Preise $(date -u +%F)"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          # Falls inzwischen ein anderer Lauf Daten gespeichert hat: unsere frischen Daten gewinnen
+          for i in 1 2 3; do
+            git pull --rebase -X theirs origin main && git push origin HEAD:main && break
+            git rebase --abort 2>/dev/null || true
+            sleep 5
+          done
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
