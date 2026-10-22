@@ -13,6 +13,8 @@ Zuletzt aktualisiert: 22.10.2026
   - Preise: Ø 1 / 7 / 30 Tage, Trend, Ab-Preis, Cardmarket-Link
 - **Mithören:** Spracherkennung (Deutsch) mit lautähnlicher Namenserkennung, Smalltalk-Filter, Protokoll „Was gehört wurde“
 - **Bild erkennen:** Screenshot hochladen, einfügen oder per Drag & Drop; Claude erkennt die Karte (eigener API-Schlüssel nötig)
+- **Archiv** (`#archiv`): jede erkannte Karte mit Scan-Vorschau, Preis beim Scan und heute, Gesamtwert, CSV-Export; nach einem Scan „Diese ist es“ zum Korrigieren. Gespeichert nur auf dem Gerät (IndexedDB).
+- **Foto machen:** öffnet direkt die Kamera (auch in der installierten App)
 - **Als App installierbar,** Screenshots über das Android-Teilen-Menü direkt an die Seite schicken
 
 ## Datenumfang (Stand Lauf vom 21.10.2026)
@@ -46,4 +48,5 @@ Zuletzt aktualisiert: 22.10.2026
 - Ältere Karten (international seit 1999, japanisch seit 1996) sind in der Schnellsuche (docs/data/old.json, wird im Hintergrund nachgeladen). Die Top-30-Ansichten bleiben bei 5 Jahren.
 - Findet die Bilderkennung genau die Version nicht, erscheint ein Hinweis mit Link zur Cardmarket-Suche.
 - Teilen-Menü und Mithören funktionieren in Chrome (Android), nicht in Firefox; „Bild erkennen“ per Galerie geht in beiden
+- Archiv liegt nur im Browser-Speicher des Handys: Beim Löschen der Browserdaten ist es weg, deshalb ab und zu als CSV exportieren
 - 1. Edition / Shadowless werden bei Cardmarket-Durchschnittspreisen nicht getrennt ausgewiesen.

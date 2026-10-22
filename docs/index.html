@@ -191,6 +191,23 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 .quick.drop { outline: 3px dashed var(--accent); outline-offset: 6px; border-radius: 8px; }
+.archive { display: grid; gap: 12px; }
+.arch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.arch-actions button, .arch-confirm button, .arch-btn {
+  font: inherit; font-size: .88rem; font-weight: 700; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.arch-actions button:disabled { opacity: .5; cursor: default; }
+.arch-confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border-radius: 8px; border: 1px solid var(--down); background: color-mix(in srgb, var(--down) 10%, var(--surface)); }
+#arch-clear-yes { border-color: var(--down); color: var(--down); }
+.arch-list { display: grid; gap: 10px; }
+.arch-item {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+}
+.arch-thumb { width: 84px; max-height: 150px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.arch-unsure { font-size: .7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--foil) 30%, var(--surface)); vertical-align: 2px; }
+.arch-picked { font-size: .85rem; font-weight: 700; color: var(--up); }
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
 .qcard {
@@ -259,6 +276,7 @@ html { scroll-behavior: smooth; }
         <button type="button" id="view-sets" aria-pressed="true">Nach Set</button>
         <button type="button" id="view-all" aria-pressed="false">Alle Sets zusammen</button>
         <button type="button" id="view-quick" aria-pressed="false">Schnellsuche</button>
+        <button type="button" id="view-archive" aria-pressed="false">Archiv</button>
       </div>
     </div>
   </div>
@@ -302,6 +320,20 @@ html { scroll-behavior: smooth; }
         placeholder="z. B. Dragonite deutsch oder Glurak japanisch">
       <p class="quick-hint" id="quick-hint">Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.</p>
       <div id="quick-results" class="quick-results"></div>
+    </section>
+    <section id="archive" class="archive" hidden>
+      <div class="set-head"><h2>Archiv</h2><span class="set-meta" id="arch-meta"></span></div>
+      <p class="quick-hint">Alle erkannten Karten mit dem Preis beim Scan und heute. Gespeichert nur auf diesem Gerät; zur Sicherung als CSV exportieren.</p>
+      <div class="arch-actions">
+        <button type="button" id="arch-export">Als CSV exportieren</button>
+        <button type="button" id="arch-clear">Alle löschen</button>
+      </div>
+      <div id="arch-confirm" class="arch-confirm" hidden>
+        <span>Wirklich alle Einträge löschen? Das lässt sich nicht rückgängig machen.</span>
+        <button type="button" id="arch-clear-yes">Ja, alle löschen</button>
+        <button type="button" id="arch-clear-no">Abbrechen</button>
+      </div>
+      <div id="arch-list" class="arch-list"></div>
     </section>
     <p class="note">Die 30 teuersten Karten jedes Haupt- und Spezialsets der letzten fünf Jahre, sortiert nach dem 30-Tage-Durchschnittspreis auf Cardmarket. „Trend“ vergleicht den 7-Tage- mit dem 30-Tage-Schnitt: grün heißt, die Karte wurde zuletzt teurer verkauft. Die Preise gelten für alle Sprachversionen zusammen.</p>
     <div id="movers" class="movers" hidden></div>
@@ -419,7 +451,7 @@ function drawMovers(show) {
 }
 
 // Ansicht: "sets" = eine Tabelle pro Set, "all" = eine Gesamtrangliste über alle Sets
-let view = location.hash === "#rangliste" ? "all" : location.hash === "#suche" ? "quick" : "sets";
+let view = { "#rangliste": "all", "#suche": "quick", "#archiv": "archive" }[location.hash] ?? "sets";
 const PAGE = 100;
 let shown = PAGE;
 
@@ -445,13 +477,17 @@ function render() {
   const setId = document.getElementById("set-filter").value;
   const q = document.getElementById("search").value.trim().toLowerCase();
   const quick = view === "quick";
-  for (const id of ["movers", "sets"]) if (quick) document.getElementById(id).hidden = true;
-  document.querySelector("main .note").hidden = quick;
-  document.getElementById("sets").hidden = quick;
+  const archive = view === "archive";
+  const other = quick || archive; // Ansichten ohne Set-Tabellen
+  for (const id of ["movers", "sets"]) if (other) document.getElementById(id).hidden = true;
+  document.querySelector("main .note").hidden = other;
+  document.getElementById("sets").hidden = other;
   document.getElementById("quick").hidden = !quick;
-  document.getElementById("set-filter").hidden = quick;
-  document.getElementById("search").hidden = quick;
+  document.getElementById("archive").hidden = !archive;
+  document.getElementById("set-filter").hidden = other;
+  document.getElementById("search").hidden = other;
   if (quick) return openQuick();
+  if (archive) return renderArchive();
   if (view === "all") return renderAll(setId, q);
   const out = [];
   for (const s of data.sets) {
@@ -537,7 +573,7 @@ async function loadQuick() {
     .then((r) => (r.ok ? r.json() : Promise.reject()))
     .then((part) => { merge(part); done("ready"); })
     .catch(() => done("missing"))
-    .finally(() => { updateQuickHint(); renderQuick(); });
+    .finally(() => { updateQuickHint(); renderQuick(); if (view === "archive") renderArchive(); });
   extra("data/asia.json", (st) => { asiaState = st; })
     .then(() => extra("data/old.json", (st) => { oldState = st; }));
 }
@@ -651,6 +687,14 @@ function priceCell(label, v, key = false) {
   return `<div class="qprice${key ? " key" : ""}"><span>${label}</span><b>${fmtPrice(v ?? null)}</b></div>`;
 }
 
+// Nach einem Scan: in der Trefferliste die richtige Version fürs Archiv wählen
+function pickBtn(c) {
+  if (!archLastId || document.getElementById("quick-input").value !== archLastQuery) return "";
+  return archPickedI === c.i
+    ? '<span class="arch-picked">✓ Im Archiv</span>'
+    : `<button type="button" class="arch-btn" data-pick="${esc(c.i)}">Diese ist es</button>`;
+}
+
 function renderQuick() {
   if (!quickData) return;
   const input = document.getElementById("quick-input").value.trim();
@@ -696,7 +740,7 @@ function renderQuick() {
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
         <div class="qmeta">${meta}</div>
         ${prices}
-        <div class="qfoot">${c.a30 ? chip(pct(c.a7, c.a30)) : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a></div>
+        <div class="qfoot">${c.a30 ? chip(pct(c.a7, c.a30)) : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>${pickBtn(c)}</div>
       </div>
     </article>`;
   }).join("");
@@ -1227,11 +1271,16 @@ async function snapRecognize(blob) {
     for (let i = 0; i < 75 && ((needAsia && asiaState === "loading") || (needOld && oldState === "loading")); i++) await sleep(200);
     const token = ++snapToken;
     const hit = snapRenderResult(img, cards, secs);
+    archSaveScan(img.url, first, hit);
     // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
     if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
       (async () => {
         for (let i = 0; i < 100 && (asiaState === "loading" || oldState === "loading"); i++) await sleep(300);
-        if (token === snapToken && snapApply(first).exact) snapRenderResult(img, cards, secs);
+        if (token === snapToken && snapApply(first).exact) {
+          const better = snapRenderResult(img, cards, secs);
+          const top = better.query ? quickSearch(better.query).list[0] : null;
+          if (top) archSetCard(top, true);
+        }
       })();
     }
   } catch (err) {
@@ -1337,6 +1386,205 @@ function snapInit() {
   snapFromShare();
 }
 
+// ---------- Archiv: erkannte Karten auf diesem Gerät speichern (IndexedDB) ----------
+let archDbP = null;
+let archLastId = null;     // zuletzt gespeicherter Scan, für "Diese ist es"
+let archLastQuery = "";
+let archPickedI = null;    // in der Trefferliste als richtig markierte Karte
+let archIdx = null;        // Karten-ID -> aktuelle Kartendaten
+
+function archDb() {
+  archDbP ??= new Promise((res, rej) => {
+    const r = indexedDB.open("pokemon-top30", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("archiv", { keyPath: "id" });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return archDbP;
+}
+async function archTx(mode, fn) {
+  const db = await archDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("archiv", mode);
+    const req = fn(tx.objectStore("archiv"));
+    tx.oncomplete = () => res(req?.result);
+    tx.onerror = () => rej(tx.error);
+  });
+}
+const archPut = (e) => archTx("readwrite", (s) => s.put(e));
+const archGet = (id) => archTx("readonly", (s) => s.get(id));
+const archDel = (id) => archTx("readwrite", (s) => s.delete(id));
+const archClearAll = () => archTx("readwrite", (s) => s.clear());
+const archAll = async () => ((await archTx("readonly", (s) => s.getAll())) ?? []).sort((a, b) => b.id - a.id);
+
+async function archThumb(dataUrl) {
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+  const scale = Math.min(1, 320 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.7);
+}
+
+function archCardInfo(c) {
+  const set = quickData.sets[c.s];
+  return { i: c.i, n: c.n, e: c.e ?? null, no: c.no, set: set?.name ?? "", off: set?.off ?? null, L: c.L ?? null, r: c.r ?? null,
+    a7: c.a7 ?? null, a30: c.a30 ?? null, lo: c.lo ?? null, u: c.u, img: c.img ?? null, p: c.p ?? null };
+}
+
+async function archUpdateCount() {
+  let n = 0;
+  try { n = (await archAll()).length; } catch {}
+  document.getElementById("view-archive").textContent = n ? `Archiv (${n})` : "Archiv";
+}
+
+// Nach einer Erkennung: Eintrag anlegen
+async function archSaveScan(imgUrl, first, hit) {
+  try {
+    const top = hit.query ? quickSearch(hit.query).list[0] : null;
+    const entry = {
+      id: Date.now(), at: new Date().toISOString(), thumb: await archThumb(imgUrl),
+      rec: first, query: hit.query ?? "", exact: Boolean(hit.exact), card: top ? archCardInfo(top) : null,
+    };
+    await archPut(entry);
+    archLastId = entry.id;
+    archLastQuery = document.getElementById("quick-input").value;
+    archPickedI = null;
+    archUpdateCount();
+    renderQuick();
+  } catch (err) {
+    console.warn("Archiv: nicht gespeichert", err);
+  }
+}
+
+// Karte des letzten Scans ändern ("Diese ist es" oder bessere Treffer nach dem Nachladen)
+async function archSetCard(card, exact) {
+  if (!archLastId) return;
+  try {
+    const e = await archGet(archLastId);
+    if (!e) return;
+    e.card = archCardInfo(card);
+    e.exact = exact;
+    await archPut(e);
+  } catch {}
+}
+
+function archCurrent(card) {
+  if (!card || !quickData) return null;
+  if (!archIdx || archIdx.size !== quickData.cards.length) archIdx = new Map(quickData.cards.map((c) => [c.i, c]));
+  return archIdx.get(card.i) ?? null;
+}
+
+const fmtDateTime = (iso) => new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+async function renderArchive() {
+  const list = document.getElementById("arch-list");
+  let entries;
+  try { entries = await archAll(); } catch {
+    list.innerHTML = '<div class="status">Das Archiv ist in diesem Browser nicht verfügbar (z. B. im privaten Fenster).</div>';
+    return;
+  }
+  quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+  await quickLoading;
+  let total = 0;
+  for (const e of entries) total += archCurrent(e.card)?.a30 ?? e.card?.a30 ?? 0;
+  document.getElementById("arch-meta").textContent = entries.length
+    ? `${entries.length} gescannte Karte${entries.length === 1 ? "" : "n"} · Wert heute zusammen ${fmtPrice(total)} (Ø 30 Tage)`
+    : "";
+  document.getElementById("arch-export").disabled = !entries.length;
+  document.getElementById("arch-clear").disabled = !entries.length;
+  if (!entries.length) {
+    list.innerHTML = '<div class="status">Noch keine Karten im Archiv. Jede Karte, die du über „Bild erkennen“, „Foto machen“ oder das Teilen-Menü erkennen lässt, landet automatisch hier.</div>';
+    return;
+  }
+  list.innerHTML = entries.map((e) => {
+    const c = e.card;
+    const now = archCurrent(c);
+    const rec = e.rec ?? {};
+    const recDesc = [rec.card_name || rec.pokemon_de, rec.number && `Nr. ${rec.number}`, rec.set_hint].filter(Boolean).map(esc).join(" · ");
+    if (!c) {
+      return `<article class="arch-item"><img class="arch-thumb" src="${esc(e.thumb)}" alt="Scan">
+        <div class="qbody"><div class="qname">${esc(rec.pokemon_de || rec.card_name || "Unbekannte Karte")}</div>
+        <div class="qmeta">Gescannt am ${fmtDateTime(e.at)} · erkannt: ${recDesc || "–"}</div>
+        <div class="qnone">Keine passende Karte in der Datenbank gefunden.</div>
+        <div class="qfoot"><button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div></div></article>`;
+    }
+    const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
+    const then30 = c.a30, now30 = now?.a30 ?? null;
+    return `<article class="arch-item"><img class="arch-thumb" src="${esc(e.thumb)}" alt="Scan von ${esc(c.n)}">
+      <div class="qbody">
+        <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.exact ? "" : ' <span class="arch-unsure">unsicher</span>'}</div>
+        <div class="qmeta">${set}</div>
+        <div class="qmeta">Gescannt am ${fmtDateTime(e.at)}${recDesc ? ` · erkannt: ${recDesc}` : ""}</div>
+        <div class="qprices">
+          ${priceCell("Ø 30 beim Scan", then30)}${priceCell("Ø 30 heute", now30, true)}${priceCell("Ø 7 heute", now?.a7 ?? null)}
+        </div>
+        <div class="qfoot">${then30 && now30 ? chip(pct(now30, then30)) : ""}
+          <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}">Suchen</button>
+          <a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>
+          <button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div>
+      </div></article>`;
+  }).join("");
+}
+
+function archCsv(entries) {
+  const num = (v) => (v == null ? "" : String(v).replace(".", ","));
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Gescannt am", "Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Ø 30 beim Scan", "Ø 7 beim Scan", "Ø 30 heute", "Ø 7 heute", "Ab heute", "Sicher erkannt", "Cardmarket"];
+  const rows = entries.map((e) => {
+    const c = e.card ?? {};
+    const now = archCurrent(e.card) ?? {};
+    return [fmtDateTime(e.at), c.n ?? e.rec?.pokemon_de, c.e, c.set, c.no, BADGE[c.L ?? "intl"], c.r, num(c.a30), num(c.a7), num(now.a30), num(now.a7), num(now.lo), e.exact ? "ja" : "nein", c.u]
+      .map(q).join(";");
+  });
+  return "﻿" + [head.map(q).join(";"), ...rows].join("\r\n");
+}
+
+function archInit() {
+  archUpdateCount();
+  document.getElementById("arch-list").addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-arch-del]");
+    if (del) { await archDel(Number(del.dataset.archDel)); archUpdateCount(); renderArchive(); return; }
+    const s = e.target.closest("[data-arch-search]");
+    if (s) {
+      document.getElementById("view-quick").click();
+      document.getElementById("quick-input").value = s.dataset.archSearch;
+      renderQuick();
+    }
+  });
+  document.getElementById("arch-export").addEventListener("click", async () => {
+    const blob = new Blob([archCsv(await archAll())], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `pokemon-archiv-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+  document.getElementById("arch-clear").addEventListener("click", () => { document.getElementById("arch-confirm").hidden = false; });
+  document.getElementById("arch-clear-no").addEventListener("click", () => { document.getElementById("arch-confirm").hidden = true; });
+  document.getElementById("arch-clear-yes").addEventListener("click", async () => {
+    await archClearAll();
+    document.getElementById("arch-confirm").hidden = true;
+    archUpdateCount();
+    renderArchive();
+  });
+  // "Diese ist es" in der Trefferliste nach einem Scan
+  document.getElementById("quick-results").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-pick]");
+    if (!b) return;
+    const c = quickData.cards.find((x) => x.i === b.dataset.pick);
+    if (!c) return;
+    await archSetCard(c, true);
+    archPickedI = c.i;
+    renderQuick();
+  });
+}
+
 const pricedSets = () => data.sets.filter((s) => !s.pending);
 
 async function init() {
@@ -1363,7 +1611,8 @@ async function init() {
     document.getElementById("view-sets").setAttribute("aria-pressed", String(v === "sets"));
     document.getElementById("view-all").setAttribute("aria-pressed", String(v === "all"));
     document.getElementById("view-quick").setAttribute("aria-pressed", String(v === "quick"));
-    const hash = { all: "#rangliste", quick: "#suche" }[v];
+    document.getElementById("view-archive").setAttribute("aria-pressed", String(v === "archive"));
+    const hash = { all: "#rangliste", quick: "#suche", archive: "#archiv" }[v];
     try { history.replaceState(null, "", hash ?? location.pathname + location.search); } catch {}
     render();
     window.scrollTo(0, 0);
@@ -1371,6 +1620,7 @@ async function init() {
   document.getElementById("view-sets").addEventListener("click", () => setView("sets"));
   document.getElementById("view-all").addEventListener("click", () => setView("all"));
   document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
+  document.getElementById("view-archive").addEventListener("click", () => setView("archive"));
   document.getElementById("listen-btn").addEventListener("click", () => (listening ? stopListening() : startListening()));
   document.getElementById("listen-history").addEventListener("click", (e) => {
     const b = e.target.closest("[data-q]");
@@ -1402,7 +1652,7 @@ async function init() {
   let t;
   document.getElementById("search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { shown = PAGE; render(); }, 150); });
 }
-init().then(snapInit, snapInit);
+init().then(snapInit, snapInit).then(archInit);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
