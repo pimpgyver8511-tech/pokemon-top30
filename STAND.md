@@ -27,15 +27,15 @@ Zuletzt aktualisiert: 22.10.2026
 - API-Schlüssel angelegt und auf der Seite hinterlegt, Bilderkennung funktioniert laut Rückmeldung
 - Erste echte Messung: Genau 6,5 s, Schnell 2,5 s; Kosten ca. 2 Cent für beide Versuche zusammen
 - Tempo-Optimierung: kleineres Bild (1280 px), „Schnell“ ohne Denkphase, SDK/Verbindung vorab, kein Warten auf alte Karten, Kartendaten im Handy-Zwischenspeicher
+- Nach der Optimierung gemessen: Schnell 2,2 s, Genau 4,4 s, Erkennung korrekt
 - Erster automatischer Tageslauf erfolgreich (gestartet 12:12 Uhr statt 07:17 Uhr: GitHub verschiebt geplante Läufe bei hoher Last)
 
 ## Offen
 
-1. Neue Zeiten nach der Optimierung messen (Genau und Schnell)
-2. In der Anthropic Console unter Limits ein eigenes Monatslimit setzen (z. B. 10 $), Standard ist 500 $
-3. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
-4. Rückmeldung zum Mithören-Modus: Was steht unter „Was gehört wurde“, wenn ein Name nicht erkannt wird?
-5. Ab ca. 28.10. erscheint in den Set-Tabellen die Spalte „vs. Vorwoche“ (braucht 7 Tage Verlauf)
+1. In der Anthropic Console unter Limits ein eigenes Monatslimit setzen (z. B. 10 $), Standard ist 500 $
+2. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
+3. Rückmeldung zum Mithören-Modus: Was steht unter „Was gehört wurde“, wenn ein Name nicht erkannt wird?
+4. Ab ca. 28.10. erscheint in den Set-Tabellen die Spalte „vs. Vorwoche“ (braucht 7 Tage Verlauf)
 
 ## Bekannte Grenzen
 
