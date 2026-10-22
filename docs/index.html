@@ -272,6 +272,8 @@ html { scroll-behavior: smooth; }
         <button type="button" id="listen-btn" class="listen-btn" aria-pressed="false">Mithören starten</button>
         <label for="snap-file" class="listen-btn snap-btn" role="button" tabindex="0">Bild erkennen</label>
         <input id="snap-file" type="file" accept="image/*" hidden>
+        <label for="snap-camera" class="listen-btn snap-btn" role="button" tabindex="0">Foto machen</label>
+        <input id="snap-camera" type="file" accept="image/*" capture="environment" hidden>
         <button type="button" id="snap-settings-btn" class="snap-gear" aria-expanded="false" aria-controls="snap-settings">Einstellungen</button>
       </div>
       <div id="snap-settings" class="snap-settings" hidden>
@@ -1279,11 +1281,14 @@ async function snapFromShare() {
 function snapInit() {
   snapRenderSettings();
   if (snapGet("snapKey", "")) setTimeout(() => snapLoadSdk().catch(() => {}), 1500);
-  document.getElementById("snap-file").addEventListener("change", (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (f) snapRecognize(f);
-  });
+  // "Bild erkennen" (Galerie) und "Foto machen" (Kamera direkt, auch in der installierten App)
+  for (const id of ["snap-file", "snap-camera"]) {
+    document.getElementById(id).addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      e.target.value = "";
+      if (f) snapRecognize(f);
+    });
+  }
   document.getElementById("snap-settings-btn").addEventListener("click", (e) => {
     const box = document.getElementById("snap-settings");
     box.hidden = !box.hidden;
