@@ -471,6 +471,10 @@ async function buildFromPtcg(ptcgId, deName) {
     const priced = cards.filter((c) => c.hasPrice);
     const top = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
     console.log(`${meta.name} (${ptcgId}, pokemontcg.io): ${priced.length} Karten mit Preis, Top ${top.length}`);
+    if (!priced.length) {
+      const sample = rows.slice(0, 2).map((c) => `${c.name} ${c.number}: ${JSON.stringify(c.cardmarket ?? null).slice(0, 200)}`);
+      console.warn(`${meta.name} (${ptcgId}): ${rows.length} Karten bei pokemontcg.io, aber keine mit Cardmarket-Ø30. Beispiele: ${sample.join(" | ")}`);
+    }
     return {
       id: ptcgId, name: meta.name ?? ptcgId, serie: meta.series ?? null, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"),
       logo: meta.images?.logo ?? null, cards: top, allCards: cards, official: meta.printedTotal ?? null,
