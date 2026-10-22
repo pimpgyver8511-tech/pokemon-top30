@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pokémon Top 30</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://api.anthropic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <meta name="theme-color" content="#171a24">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -1044,20 +1046,27 @@ function snapShow(html) {
   box.innerHTML = html;
 }
 
-// Bild verkleinern (lange Seite max. 1568 px) und als JPEG kodieren
+// Bild verkleinern (lange Seite max. 1280 px) und als JPEG kodieren: schneller hochgeladen und verarbeitet
 async function snapPrepare(blob) {
   const bmp = await createImageBitmap(blob);
-  const scale = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+  const scale = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bmp.width * scale);
   canvas.height = Math.round(bmp.height * scale);
   canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  const url = canvas.toDataURL("image/jpeg", 0.85);
+  const url = canvas.toDataURL("image/jpeg", 0.82);
   return { url, b64: url.slice(url.indexOf(",") + 1) };
 }
 
-let snapSdk = null;
+let snapSdkLoad = null;
 let snapBusy = false;
+let snapToken = 0;
+// SDK einmal laden und merken (wird schon beim Öffnen der Schnellsuche angestoßen)
+function snapLoadSdk() {
+  snapSdkLoad ??= import(SNAP_SDK).then((m) => m.default).catch((err) => { snapSdkLoad = null; throw err; });
+  return snapSdkLoad;
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function snapErrorText(err) {
   const status = err?.status;
@@ -1150,14 +1159,16 @@ async function snapRecognize(blob) {
     const img = await snapPrepare(blob);
     snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg"><span class="spinner" aria-hidden="true"></span> Karte wird erkannt …</p>`);
     quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
-    snapSdk ??= (await import(SNAP_SDK)).default;
-    const client = new snapSdk({ apiKey: key, dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 60_000 });
+    const Anthropic = await snapLoadSdk();
+    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 60_000 });
     const model = SNAP_MODELS[snapGet("snapMode", "exact")] ?? SNAP_MODELS.exact;
     const params = {
       model,
       max_tokens: 4000,
       system: SNAP_SYSTEM,
       output_config: { effort: "low", format: { type: "json_schema", schema: SNAP_SCHEMA } },
+      // "Schnell": Denkphase aus, für das Ablesen einer Karte nicht nötig (bei Opus 5.5 nicht abschaltbar)
+      ...(model === SNAP_MODELS.fast ? { thinking: { type: "disabled" } } : {}),
       messages: [{
         role: "user",
         content: [
@@ -1174,33 +1185,47 @@ async function snapRecognize(blob) {
     const text = res.content.find((b) => b.type === "text")?.text ?? "";
     const cards = JSON.parse(text).cards ?? [];
     await quickLoading;
-    // Asiatische und ältere Karten werden im Hintergrund geladen: kurz darauf warten (max. 15 s)
-    for (let i = 0; i < 75 && (asiaState === "loading" || oldState === "loading"); i++) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
     const secs = ((performance.now() - t0) / 1000).toFixed(1).replace(".", ",");
     if (!cards.length) {
       snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg">Auf dem Bild wurde keine Karte erkannt (${secs} s). Am besten einen Screenshot machen, wenn die Karte groß im Bild ist.</p>`);
       return;
     }
     const first = cards[0];
-    const hit = snapApply(first);
-    const query = hit.query;
-    const desc = [first.card_name || first.pokemon_de, first.number && `Nr. ${first.number}`, first.set_hint, SNAP_LANG_WORD[first.language] && LANG_LABEL[first.language === "zh" ? "zh" : first.language]]
-      .filter(Boolean).map(esc).join(" · ");
-    const others = cards.slice(1).map((c) => snapQueries(c)[0]).filter(Boolean);
-    snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild">
-      <div class="snap-msg"><b>Erkannt:</b> ${desc} <span class="snap-conf">(${SNAP_CONF[first.confidence] ?? ""}, ${secs} s)</span>
-      </div>
-      ${snapWarning(first, hit)}
-      ${others.length ? `<div class="listen-history">${others.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}`);
-    if (!query) document.getElementById("quick-input").value = first.pokemon_de || first.pokemon_en || "";
+    // Nur warten, wenn die Karte in noch nicht geladenen Daten stecken muss (asiatisch bzw. alt)
+    const year = parseInt(first.year, 10);
+    const needAsia = ["ja", "ko", "zh"].includes(first.language);
+    const needOld = Boolean(year) && year < new Date().getFullYear() - 5;
+    for (let i = 0; i < 75 && ((needAsia && asiaState === "loading") || (needOld && oldState === "loading")); i++) await sleep(200);
+    const token = ++snapToken;
+    const hit = snapRenderResult(img, cards, secs);
+    // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
+    if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
+      (async () => {
+        for (let i = 0; i < 100 && (asiaState === "loading" || oldState === "loading"); i++) await sleep(300);
+        if (token === snapToken && snapApply(first).exact) snapRenderResult(img, cards, secs);
+      })();
+    }
   } catch (err) {
     console.error(err);
     snapShow(`<p class="snap-msg snap-err">${esc(err.refusal ? "Die Erkennung hat das Bild abgelehnt. Bitte ein anderes Bild versuchen." : snapErrorText(err))}</p>`);
   } finally {
     snapBusy = false;
   }
+}
+
+function snapRenderResult(img, cards, secs) {
+  const first = cards[0];
+  const hit = snapApply(first);
+  const desc = [first.card_name || first.pokemon_de, first.number && `Nr. ${first.number}`, first.set_hint, SNAP_LANG_WORD[first.language] && LANG_LABEL[first.language === "zh" ? "zh" : first.language]]
+    .filter(Boolean).map(esc).join(" · ");
+  const others = cards.slice(1).map((c) => snapQueries(c)[0]).filter(Boolean);
+  snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild">
+    <div class="snap-msg"><b>Erkannt:</b> ${desc} <span class="snap-conf">(${SNAP_CONF[first.confidence] ?? ""}, ${secs} s)</span>
+    </div>
+    ${snapWarning(first, hit)}
+    ${others.length ? `<div class="listen-history">${others.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}`);
+  if (!hit.query) document.getElementById("quick-input").value = first.pokemon_de || first.pokemon_en || "";
+  return hit;
 }
 
 function snapFromItems(items) {
@@ -1226,6 +1251,7 @@ async function snapFromShare() {
 
 function snapInit() {
   snapRenderSettings();
+  if (snapGet("snapKey", "")) setTimeout(() => snapLoadSdk().catch(() => {}), 1500);
   document.getElementById("snap-file").addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
