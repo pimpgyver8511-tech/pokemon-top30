@@ -427,17 +427,26 @@ async function buildAsia(lang, setOffset, tag, recent = true) {
 }
 
 // Set komplett aus pokemontcg.io bauen (für Sets, die TCGdex nicht kennt, z. B. Classic Collection)
+// Ersatzangaben, falls pokemontcg.io die Set-Infos nicht liefert
+const PTCG_SET_FALLBACK = {
+  cel25c: { name: "Celebrations: Classic Collection", series: "Sword & Shield", releaseDate: "2021/10/08", printedTotal: 25 },
+};
+
 async function buildFromPtcg(ptcgId, deName) {
   try {
-    const meta = (await getJson(`${PTCG}/sets/${encodeURIComponent(ptcgId)}`))?.data;
-    if (!meta) return null;
     const rows = [];
     for (let page = 1; page <= 4; page++) {
       const q = encodeURIComponent(`set.id:${ptcgId}`);
-      const res = await getJson(`${PTCG}/cards?q=${q}&page=${page}&pageSize=250&select=id,name,number,rarity,cardmarket,images`);
+      const res = await getJson(`${PTCG}/cards?q=${q}&page=${page}&pageSize=250&select=id,name,number,rarity,cardmarket,images,set`);
       rows.push(...(res?.data ?? []));
       if (!res || page * 250 >= (res.totalCount ?? 0)) break;
     }
+    if (!rows.length) {
+      console.warn(`pokemontcg.io: keine Karten für ${ptcgId}`);
+      return null;
+    }
+    // Set-Infos stecken in jeder Karte; sonst Ersatzangaben
+    const meta = { ...(PTCG_SET_FALLBACK[ptcgId] ?? {}), ...(rows[0].set ?? {}) };
     const cards = rows.map((c) => {
       const price = pickPtcgPrice(c);
       const name = deName(c.name);
@@ -458,7 +467,7 @@ async function buildFromPtcg(ptcgId, deName) {
     const top = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
     console.log(`${meta.name} (${ptcgId}, pokemontcg.io): ${priced.length} Karten mit Preis, Top ${top.length}`);
     return {
-      id: ptcgId, name: meta.name, serie: meta.series ?? null, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"),
+      id: ptcgId, name: meta.name ?? ptcgId, serie: meta.series ?? null, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"),
       logo: meta.images?.logo ?? null, cards: top, allCards: cards, official: meta.printedTotal ?? null,
     };
   } catch (err) {
