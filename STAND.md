@@ -22,7 +22,8 @@ Zuletzt aktualisiert: 22.10.2026
 - Schnellsuche gesamt: ca. 41.500 Karten (aktuell 6.100 + Promos, asiatisch 12.800, ältere 22.000 aus 237 Sets, ab 1996)
 - Ladezeit in Handy-Simulation: Suche nach ca. 4,5 s bereit, ältere Karten nach ca. 15 s im Hintergrund
 - Eine Suche dauert 15–40 ms
-- Täglicher Lauf auf GitHub: ca. 5 Minuten
+- Täglicher Lauf auf GitHub: ca. 10–15 Minuten (Preise aller Karten); Seitenänderungen gehen über einen eigenen Ablauf in ca. 1 Minute online
+- Warnungen des letzten Laufs: docs/data/status.json
 
 ## Erledigt am 22.10.2026
 

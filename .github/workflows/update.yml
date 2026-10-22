@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["docs/index.html", "scripts/**", ".github/workflows/**"]
+    # Nur Änderungen am Datenskript lösen einen kompletten Preis-Lauf aus.
+    # Reine Seitenänderungen veröffentlicht deploy.yml in ca. 1 Minute.
+    paths: ["scripts/**", ".github/workflows/update.yml"]
 
 permissions:
   contents: write

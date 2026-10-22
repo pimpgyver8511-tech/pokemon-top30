@@ -11,6 +11,11 @@ const YEARS = 5;
 const CONCURRENCY = 6;
 const OUT_DIR = path.resolve(import.meta.dirname, "..", "docs", "data");
 
+// Alle Warnungen eines Laufs, landen in docs/data/status.json
+const WARNINGS = [];
+const origWarn = console.warn.bind(console);
+console.warn = (...args) => { WARNINGS.push(args.map(String).join(" ")); origWarn(...args); };
+
 const cutoff = new Date();
 cutoff.setFullYear(cutoff.getFullYear() - YEARS);
 const cutoffIso = cutoff.toISOString().slice(0, 10);
@@ -603,6 +608,10 @@ async function main() {
     .sort();
   await writeFile(path.join(OUT_DIR, "history", "index.json"), JSON.stringify(dates));
   console.log(`Fertig: ${result.length} Sets, ${totalCards} Karten, ${dates.length} Tage Verlauf`);
+  await writeFile(
+    path.join(OUT_DIR, "status.json"),
+    JSON.stringify({ updated: now.toISOString(), seconds: Math.round(process.uptime()), sets: result.map((st) => st.id), warnings: WARNINGS }, null, 1),
+  );
 }
 
 main().catch((err) => {
