@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 22.10.2026
+Zuletzt aktualisiert: 22.10.2026 (abends)
 
 ## Was fertig ist
 
@@ -45,6 +45,7 @@ Zuletzt aktualisiert: 22.10.2026
 - Cardmarket-Preise gelten für alle europäischen Sprachen zusammen (Deutsch = Englisch)
 - Bei koreanischen und chinesischen Karten ist unklar, ob der Preis nur für diese Sprachversion gilt
 - Wenige koreanische Karten in der Datenquelle; viele asiatische Karten ohne Bild
+- Celebrations Classic Collection (cel25c): weder TCGdex noch pokemontcg.io haben Cardmarket-Preise. Ist fest eingeplant und erscheint automatisch, sobald es Preise gibt. Option TCGplayer-US-Preise ($) bewusst zurückgestellt (Entscheidung 22.10.: erst mal warten)
 - „30 Jahre“-Sets: noch keine Cardmarket-Preise bei den Datenquellen, erscheinen automatisch
 - Ältere Karten (international seit 1999, japanisch seit 1996) sind in der Schnellsuche (docs/data/old.json, wird im Hintergrund nachgeladen). Die Top-30-Ansichten bleiben bei 5 Jahren.
 - Findet die Bilderkennung genau die Version nicht, erscheint ein Hinweis mit Link zur Cardmarket-Suche.
