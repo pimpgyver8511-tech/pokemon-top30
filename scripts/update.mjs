@@ -426,7 +426,67 @@ async function buildAsia(lang, setOffset, tag, recent = true) {
   return { sets, cards };
 }
 
+// Set komplett aus pokemontcg.io bauen (für Sets, die TCGdex nicht kennt, z. B. Classic Collection)
+async function buildFromPtcg(ptcgId, deName) {
+  try {
+    const meta = (await getJson(`${PTCG}/sets/${encodeURIComponent(ptcgId)}`))?.data;
+    if (!meta) return null;
+    const rows = [];
+    for (let page = 1; page <= 4; page++) {
+      const q = encodeURIComponent(`set.id:${ptcgId}`);
+      const res = await getJson(`${PTCG}/cards?q=${q}&page=${page}&pageSize=250&select=id,name,number,rarity,cardmarket,images`);
+      rows.push(...(res?.data ?? []));
+      if (!res || page * 250 >= (res.totalCount ?? 0)) break;
+    }
+    const cards = rows.map((c) => {
+      const price = pickPtcgPrice(c);
+      const name = deName(c.name);
+      return {
+        hasPrice: Boolean(price && isNum(price.avg30)),
+        enName: name !== c.name ? c.name : null,
+        id: `${ptcgId}-${c.number}`,
+        no: c.number,
+        name,
+        rarity: c.rarity ?? null,
+        thumb: c.images?.small ?? null,
+        large: c.images?.large ?? null,
+        ...(price ?? {}),
+        url: c.cardmarket?.url ?? cardmarketUrl(null, c.name),
+      };
+    });
+    const priced = cards.filter((c) => c.hasPrice);
+    const top = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
+    console.log(`${meta.name} (${ptcgId}, pokemontcg.io): ${priced.length} Karten mit Preis, Top ${top.length}`);
+    return {
+      id: ptcgId, name: meta.name, serie: meta.series ?? null, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"),
+      logo: meta.images?.logo ?? null, cards: top, allCards: cards, official: meta.printedTotal ?? null,
+    };
+  } catch (err) {
+    console.warn(`pokemontcg.io-Set ${ptcgId} übersprungen: ${err.message}`);
+    return null;
+  }
+}
+
+// Englische Pokémon-Namen in Kartennamen durch die deutschen ersetzen ("Charizard" -> "Glurak")
+function makeDeNamer(species) {
+  if (!species) return (n) => n;
+  const pairs = [];
+  for (const names of species.values()) {
+    const en = names.get(9), de = names.get(6);
+    if (en && de && en !== de) pairs.push([en, de]);
+  }
+  pairs.sort((a, b) => b[0].length - a[0].length);
+  return (name) => {
+    for (const [en, de] of pairs) {
+      const re = new RegExp(`(^|[^A-Za-z])${en.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z])`);
+      if (re.test(name)) return name.replace(re, `$1${de}`);
+    }
+    return name;
+  };
+}
+
 async function main() {
+  const species = await loadSpecies();
   const sets = await loadSets();
   if (sets.length === 0) throw new Error("Keine Sets gefunden – API-Antwort prüfen");
   // Trainer-Galerie (…tg) und Galar-Galerie (…gg) gehören auf Cardmarket zum Hauptset.
@@ -459,6 +519,13 @@ async function main() {
       result.push({ ...built, pending: true, cardTotal: (set.cards?.length ?? 0) + (set.extraCards?.length ?? 0) });
     }
   }
+  // Fest gewünschte Sets, die TCGdex nicht hat, aus pokemontcg.io ergänzen
+  const have = new Set(mainSets.map((st) => st.id));
+  for (const id of EXTRA_TOP_SETS.filter((x) => !have.has(x))) {
+    const built = await buildFromPtcg(id, makeDeNamer(species));
+    if (built?.cards.length) { result.push(built); allSets.push(built); }
+  }
+  result.sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""));
   for (const promo of promoSets) {
     const built = await buildSet(promo);
     allSets.push({ ...built, promo: true });
@@ -479,7 +546,6 @@ async function main() {
   );
 
   // Schnellsuche: alle Karten (auch ohne Preis) in kompakter Form.
-  const species = await loadSpecies();
   const tag = makeSpeciesTagger(species);
   const { sets: searchSets, cards: searchCards } = toSearchData(allSets, tag);
   await writeFile(
