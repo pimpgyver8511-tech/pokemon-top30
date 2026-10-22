@@ -201,6 +201,17 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .arch-confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border-radius: 8px; border: 1px solid var(--down); background: color-mix(in srgb, var(--down) 10%, var(--surface)); }
 #arch-clear-yes { border-color: var(--down); color: var(--down); }
 .arch-list { display: grid; gap: 10px; }
+.arch-total {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: center;
+  padding: 14px; border-radius: 10px; background: var(--ink); color: var(--bg); border-bottom: 4px solid var(--foil);
+  font-variant-numeric: tabular-nums;
+}
+.arch-total span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; opacity: .75; }
+.arch-total-main b { font-family: var(--font-display); font-stretch: 112%; font-size: clamp(1.7rem, 7vw, 2.3rem); color: var(--foil); line-height: 1.1; }
+.arch-total-side { display: grid; gap: 6px; }
+.arch-total-side b { font-size: 1.05rem; }
+.arch-total .quick-hint { grid-column: 1 / -1; color: inherit; opacity: .75; }
+.arch-total .chip.flat { color: var(--bg); background: color-mix(in srgb, var(--bg) 22%, transparent); }
 .arch-item {
   display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; align-items: start;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
@@ -325,6 +336,7 @@ html { scroll-behavior: smooth; }
     </section>
     <section id="archive" class="archive" hidden>
       <div class="set-head"><h2>Archiv</h2><span class="set-meta" id="arch-meta"></span></div>
+      <div id="arch-total" class="arch-total" hidden></div>
       <p class="quick-hint">Alle erkannten Karten mit dem Preis beim Scan und heute. Gespeichert nur auf diesem Gerät; zur Sicherung als CSV exportieren.</p>
       <div class="arch-actions">
         <button type="button" id="arch-export">Als CSV exportieren</button>
@@ -1518,11 +1530,25 @@ async function renderArchive() {
   }
   quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
   await quickLoading;
-  let total = 0;
-  for (const e of entries) total += archCurrent(e.card)?.a30 ?? e.card?.a30 ?? 0;
+  // Gesamtwert nach Ø 30 Tage: heute und zum Zeitpunkt der Scans
+  let total = 0, totalThen = 0, priced = 0;
+  for (const e of entries) {
+    const now = archCurrent(e.card)?.a30 ?? e.card?.a30 ?? null;
+    if (now != null) { total += now; priced++; }
+    totalThen += e.card?.a30 ?? 0;
+  }
   document.getElementById("arch-meta").textContent = entries.length
-    ? `${entries.length} gescannte Karte${entries.length === 1 ? "" : "n"} · Wert heute zusammen ${fmtPrice(total)} (Ø 30 Tage)`
+    ? `${entries.length} gescannte Karte${entries.length === 1 ? "" : "n"}`
     : "";
+  const tot = document.getElementById("arch-total");
+  tot.hidden = !entries.length;
+  tot.innerHTML = entries.length ? `
+    <div class="arch-total-main"><span>Gesamtwert (Ø 30 Tage)</span><b>${fmtPrice(total)}</b></div>
+    <div class="arch-total-side">
+      <div><span>Beim Scan</span><b>${fmtPrice(totalThen)}</b></div>
+      <div><span>Veränderung</span>${totalThen ? chip(pct(total, totalThen)) : "–"}</div>
+    </div>
+    ${priced < entries.length ? `<p class="quick-hint">${entries.length - priced} Karte${entries.length - priced === 1 ? "" : "n"} ohne Preis nicht mitgezählt.</p>` : ""}` : "";
   document.getElementById("arch-export").disabled = !entries.length;
   document.getElementById("arch-clear").disabled = !entries.length;
   if (!entries.length) {
