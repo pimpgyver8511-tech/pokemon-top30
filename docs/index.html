@@ -569,7 +569,7 @@ async function openQuick() {
 
 // Zerlegt die Eingabe in Sprache, Pokémon, Nummer und restliche Wörter.
 function parseQuery(query) {
-  let tokens = fold(query).split(" ").filter(Boolean);
+  let tokens = fold(query).split(" ").filter((t) => t && !["&", "und", "and"].includes(t));
   let lang = null;
   tokens = tokens.filter((t) => {
     const l = LANG_OF.get(t);
@@ -601,6 +601,15 @@ function parseQuery(query) {
   return { lang, species: [...species], num, total, words };
 }
 
+// Von der Bilderkennung gesetzt: passende Kartenart (z. B. normale Version) in der Trefferliste nach oben
+let rarityPref = null;
+const RARITY_BY_VARIANT = {
+  normal: /double rare|doppelselten|^rare$|rare holo|holo rare|^selten$|selten, holo|^common$|^uncommon$|gewöhnlich|ungewöhnlich|^promo$/i,
+  full_art: /ultra rare|ultra selten|full art/i,
+  illustration: /illustration|special art|art rare|besondere|secret rare|character/i,
+  gold: /hyper|gold|secret|rainbow/i,
+};
+
 function quickSearch(query) {
   const q = parseQuery(query);
   if (!q.species.length && !q.words.length && q.num == null) return { q, list: [] };
@@ -627,6 +636,7 @@ function quickSearch(query) {
       else if (set._hay.includes(t) || fold(c.r).includes(t)) score += 1;
       else { ok = false; break; }
     }
+    if (ok && rarityPref && c.r && rarityPref.test(c.r)) score += 4;
     if (ok) hits.push([score, c]);
   }
   hits.sort((a, b) => b[0] - a[0] || (b[1].a30 ?? -1) - (a[1].a30 ?? -1));
@@ -870,6 +880,7 @@ function applyHeard({ hits, lang, setWord }) {
   if (setWord) parts.push(setWord);
   const query = parts.filter(Boolean).join(" ");
   const now = Date.now();
+  rarityPref = null;
   if (query === lastHit.key && now - lastHit.at < 15000) return query; // nicht ständig neu auslösen
   lastHit = { key: query, at: now };
   // Wer gerade selbst tippt, wird nicht überschrieben: dann nur in den Verlauf
@@ -1010,6 +1021,7 @@ Felder:
 - number: Kartennummer wie gedruckt ohne Set-Kürzel, z. B. "199/165", "027", "TG23". Leer, wenn nicht lesbar.
 - set_hint: Set oder Promo-Kürzel, falls erkennbar (z. B. "SVP Promo", "151", "Prismatische Entwicklungen"), sonst leer.
 - language: Sprache des Aufdrucks (de, en, ja, ko, zh oder unknown).
+- variant: Art der Karte: "normal" (normale Karte mit Rahmen und Textfeld, auch normale ex/GX/V-Karten), "full_art" (Vollbild-Karte, Pokémon vor einfarbigem/strukturiertem Hintergrund), "illustration" (Vollbild mit Szenen-Illustration, Alt Art, Special/Illustration Rare), "gold" (goldene oder regenbogenfarbene Karte), sonst "unknown".
 - year: Jahr aus der Copyright-Zeile unten auf der Karte (z. B. "2002", "2023"), leer wenn nicht lesbar.
 - confidence: high, medium oder low.
 Die am deutlichsten gezeigte Karte zuerst. Ist keine Karte erkennbar, gib eine leere Liste zurück. Rate lieber mit confidence "low", als nichts zu liefern.`;
@@ -1023,7 +1035,7 @@ const SNAP_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "language", "year", "confidence"],
+        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "language", "variant", "year", "confidence"],
         properties: {
           pokemon_en: { type: "string" },
           pokemon_de: { type: "string" },
@@ -1031,6 +1043,7 @@ const SNAP_SCHEMA = {
           number: { type: "string" },
           set_hint: { type: "string" },
           language: { type: "string", enum: ["de", "en", "ja", "ko", "zh", "unknown"] },
+          variant: { type: "string", enum: ["normal", "full_art", "illustration", "gold", "unknown"] },
           year: { type: "string" },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
         },
@@ -1124,6 +1137,7 @@ function snapQueries(card) {
 }
 
 function snapApply(card) {
+  rarityPref = RARITY_BY_VARIANT[card.variant] ?? null;
   const num = (card.number || "").replace(/^[A-Z]{2,5}\s+/i, "").trim();
   for (const q of snapQueries(card)) {
     if (quickSearch(q).list.length) {
@@ -1364,7 +1378,7 @@ async function init() {
   if (view !== "sets") setView(view);
   let qt;
   document.getElementById("quick-input").addEventListener("input", () => {
-    lastManualInput = Date.now(); clearTimeout(qt); qt = setTimeout(renderQuick, 120); });
+    lastManualInput = Date.now(); rarityPref = null; clearTimeout(qt); qt = setTimeout(renderQuick, 120); });
   document.getElementById("main").addEventListener("click", (e) => {
     if (e.target.closest("#more")) { shown += PAGE; render(); return; }
     const btn = e.target.closest("[data-sort]");
