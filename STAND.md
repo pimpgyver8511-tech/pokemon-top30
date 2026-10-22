@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 21.10.2026 (nachts)
+Zuletzt aktualisiert: 22.10.2026
 
 ## Was fertig ist
 
@@ -22,14 +22,17 @@ Zuletzt aktualisiert: 21.10.2026 (nachts)
 - Eine Suche dauert 15–40 ms
 - Täglicher Lauf auf GitHub: ca. 5 Minuten
 
-## Offen (morgen am Rechner)
+## Erledigt am 22.10.2026
 
-1. Auf console.anthropic.com Konto anlegen, Guthaben kaufen (z. B. 5 $), Ausgabenlimit setzen
-2. API-Schlüssel erstellen (beginnt mit `sk-ant-`)
-3. Auf der Seite: Schnellsuche → Einstellungen → Schlüssel einfügen → Genau oder Schnell → Speichern
-4. Erste echte Erkennung testen (z. B. mit dem Relaxo-SVP-051-Screenshot). Der echte Aufruf an Claude ist noch ungetestet, nur die Kette auf der Seite ist geprüft.
-5. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
-6. Rückmeldung zum Mithören-Modus: Was steht unter „Was gehört wurde“, wenn ein Name nicht erkannt wird?
+- API-Schlüssel angelegt und auf der Seite hinterlegt, Bilderkennung funktioniert laut Rückmeldung
+- Erster automatischer Tageslauf erfolgreich (gestartet 12:12 Uhr statt 07:17 Uhr: GitHub verschiebt geplante Läufe bei hoher Last)
+
+## Offen
+
+1. Erfahrungen mit der Bilderkennung sammeln: Genau oder Schnell? Wie lange dauert es, stimmt die Karte? Kosten in der Console unter Usage prüfen
+2. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
+3. Rückmeldung zum Mithören-Modus: Was steht unter „Was gehört wurde“, wenn ein Name nicht erkannt wird?
+4. Ab ca. 28.10. erscheint in den Set-Tabellen die Spalte „vs. Vorwoche“ (braucht 7 Tage Verlauf)
 
 ## Bekannte Grenzen
 
