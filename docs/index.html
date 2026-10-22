@@ -212,6 +212,13 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .05em; vertical-align: 2px;
   padding: 1px 6px; border-radius: 4px; background: var(--ink); color: var(--bg);
 }
+.art-wrap { position: relative; display: block; width: 84px; }
+.qcard img.art { object-fit: contain; padding: 8px; background: var(--line); }
+.art-tag {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; text-align: center;
+  font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  background: var(--ink); color: var(--bg); border-radius: 3px; padding: 1px 0;
+}
 .qnone { color: var(--muted); font-size: .9rem; }
 .qfoot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .sort-btn {
@@ -626,6 +633,8 @@ function quickSearch(query) {
   return { q, list: hits.slice(0, 40).map((h) => h[1]), total: hits.length };
 }
 
+const ARTWORK = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/";
+
 function priceCell(label, v, key = false) {
   return `<div class="qprice${key ? " key" : ""}"><span>${label}</span><b>${fmtPrice(v ?? null)}</b></div>`;
 }
@@ -654,9 +663,13 @@ function renderQuick() {
     const showEn = q.lang === "en" && c.e;
     const title = showEn ? c.e : c.n;
     const sub = showEn ? c.n : g === "intl" ? c.e : c.p?.length ? speciesLabel.get(c.p[0])?.de : null;
+    // Ohne Kartenscan: offizielles Pokémon-Artwork als klar markiertes Symbolbild
+    const art = !c.img && c.p?.length ? `${ARTWORK}${c.p[0]}.png` : null;
     const img = c.img
       ? `<a href="${esc(c.big ?? c.img)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(title)}"><img loading="lazy" src="${esc(c.img)}" alt="${esc(title)}"></a>`
-      : '<span class="no-img">?</span>';
+      : art
+        ? `<span class="art-wrap"><img class="art" loading="lazy" src="${esc(art)}" alt="Symbolbild ${esc(title)}" onerror="this.parentElement.outerHTML='<span class=&quot;no-img&quot;>?</span>'"><span class="art-tag">Symbolbild</span></span>`
+        : '<span class="no-img">?</span>';
     const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}`;
     const rarity = c.r && c.r !== "None" ? esc(c.r) : "";
     const meta = [esc(set.name), no, rarity, c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
