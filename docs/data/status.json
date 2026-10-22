@@ -1,6 +1,6 @@
 {
- "updated": "2026-10-22T20:55:36.684Z",
- "seconds": 465,
+ "updated": "2026-10-22T21:05:49.002Z",
+ "seconds": 856,
  "sets": [
   "30th-c",
   "30th",
@@ -37,7 +37,7 @@
  ],
  "warnings": [
   "30 Jahre: Klassische Sammlung (30th-c): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io: kein Set \"30th Classic Collection\" gefunden",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%2230th%20Classic%20Collection%22: HTTP 502",
   "30 Jahre: Klassische Sammlung (30th-c): noch keine Preise – wird mit Hinweis angezeigt",
   "  Karten laut TCGdex: 30, cardCount: {\"firstEd\":0,\"holo\":0,\"normal\":0,\"official\":0,\"reverse\":0,\"total\":30}",
   "  de 30th-c-001 Glurak: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
@@ -54,6 +54,7 @@
   "  de 30th-002 Alola-Kokowei: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
   "  en 30th-002 Alolan Exeggutor: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
   "  de 30th-003 Volbeat: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
-  "  en 30th-003 Volbeat: pricing={\"cardmarket\":null,\"tcgplayer\":null}"
+  "  en 30th-003 Volbeat: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
+  "Celebrations: Classic Collection (cel25c): 25 Karten bei pokemontcg.io, aber keine mit Cardmarket-Ø30. Beispiele: Charizard 4: null | Blastoise 2: null"
  ]
 }
