@@ -208,6 +208,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .arch-thumb { width: 84px; max-height: 150px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
 .arch-unsure { font-size: .7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--foil) 30%, var(--surface)); vertical-align: 2px; }
 .arch-picked { font-size: .85rem; font-weight: 700; color: var(--up); }
+.snap-batch { margin: 0; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); font-size: .92rem; }
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
 .qcard {
@@ -289,7 +290,7 @@ html { scroll-behavior: smooth; }
       <div class="listen">
         <button type="button" id="listen-btn" class="listen-btn" aria-pressed="false">Mithören starten</button>
         <label for="snap-file" class="listen-btn snap-btn" role="button" tabindex="0">Bild erkennen</label>
-        <input id="snap-file" type="file" accept="image/*" hidden>
+        <input id="snap-file" type="file" accept="image/*" multiple hidden>
         <label for="snap-camera" class="listen-btn snap-btn" role="button" tabindex="0">Foto machen</label>
         <input id="snap-camera" type="file" accept="image/*" capture="environment" hidden>
         <button type="button" id="snap-settings-btn" class="snap-gear" aria-expanded="false" aria-controls="snap-settings">Einstellungen</button>
@@ -309,6 +310,7 @@ html { scroll-behavior: smooth; }
         <p class="quick-hint" id="snap-key-state"></p>
         <p class="quick-hint">Der Schlüssel bleibt nur auf diesem Gerät gespeichert und wird nur an Anthropic geschickt. Tipp: In der Anthropic Console ein monatliches Ausgabenlimit setzen.</p>
       </div>
+      <p id="snap-batch" class="snap-batch" hidden></p>
       <div id="snap-result" class="snap-result" hidden></div>
       <p id="listen-status" class="listen-status" hidden></p>
       <div id="listen-history" class="listen-history" hidden></div>
@@ -1216,15 +1218,16 @@ function snapWarning(card, hit) {
   return "";
 }
 
-async function snapRecognize(blob) {
-  if (snapBusy) return;
+// Liefert "ok", "none" (keine Karte), "nokey" oder "error"
+async function snapRecognize(blob, photoAt = null) {
+  if (snapBusy) return "error";
   const key = snapGet("snapKey", "");
   if (view !== "quick") document.getElementById("view-quick").click();
   if (!key) {
     document.getElementById("snap-settings").hidden = false;
     document.getElementById("snap-settings-btn").setAttribute("aria-expanded", "true");
     snapShow('<p class="snap-msg">Für die Bilderkennung zuerst unten deinen Claude API-Schlüssel eintragen und speichern.</p>');
-    return;
+    return "nokey";
   }
   snapBusy = true;
   const t0 = performance.now();
@@ -1261,7 +1264,7 @@ async function snapRecognize(blob) {
     const secs = ((performance.now() - t0) / 1000).toFixed(1).replace(".", ",");
     if (!cards.length) {
       snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg">Auf dem Bild wurde keine Karte erkannt (${secs} s). Am besten einen Screenshot machen, wenn die Karte groß im Bild ist.</p>`);
-      return;
+      return "none";
     }
     const first = cards[0];
     // Nur warten, wenn die Karte in noch nicht geladenen Daten stecken muss (asiatisch bzw. alt)
@@ -1271,7 +1274,7 @@ async function snapRecognize(blob) {
     for (let i = 0; i < 75 && ((needAsia && asiaState === "loading") || (needOld && oldState === "loading")); i++) await sleep(200);
     const token = ++snapToken;
     const hit = snapRenderResult(img, cards, secs);
-    archSaveScan(img.url, first, hit);
+    await archSaveScan(img.url, first, hit, photoAt);
     // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
     if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
       (async () => {
@@ -1283,9 +1286,11 @@ async function snapRecognize(blob) {
         }
       })();
     }
+    return "ok";
   } catch (err) {
     console.error(err);
     snapShow(`<p class="snap-msg snap-err">${esc(err.refusal ? "Die Erkennung hat das Bild abgelehnt. Bitte ein anderes Bild versuchen." : snapErrorText(err))}</p>`);
+    return "error";
   } finally {
     snapBusy = false;
   }
@@ -1304,6 +1309,23 @@ function snapRenderResult(img, cards, secs) {
     ${others.length ? `<div class="listen-history">${others.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}`);
   if (!hit.query) document.getElementById("quick-input").value = first.pokemon_de || first.pokemon_en || "";
   return hit;
+}
+
+// Mehrere Bilder (z. B. alte Screenshots) nacheinander erkennen und ins Archiv legen
+async function snapBatch(files) {
+  const box = document.getElementById("snap-batch");
+  const count = { ok: 0, none: 0, error: 0 };
+  box.hidden = false;
+  for (let i = 0; i < files.length; i++) {
+    box.innerHTML = `<span class="spinner" aria-hidden="true"></span> Bild ${i + 1} von ${files.length} wird erkannt …`;
+    const r = await snapRecognize(files[i], files[i].lastModified || null);
+    if (r === "nokey") { box.hidden = true; return; }
+    count[r] = (count[r] ?? 0) + 1;
+  }
+  box.innerHTML = `<b>${files.length} Bilder verarbeitet:</b> ${count.ok} erkannt und im Archiv` +
+    (count.none ? `, ${count.none} ohne erkennbare Karte` : "") + (count.error ? `, ${count.error} mit Fehler` : "") +
+    ` · <button type="button" class="arch-btn" id="snap-batch-open">Archiv öffnen</button>`;
+  document.getElementById("snap-batch-open").addEventListener("click", () => document.getElementById("view-archive").click());
 }
 
 function snapFromItems(items) {
@@ -1333,9 +1355,10 @@ function snapInit() {
   // "Bild erkennen" (Galerie) und "Foto machen" (Kamera direkt, auch in der installierten App)
   for (const id of ["snap-file", "snap-camera"]) {
     document.getElementById(id).addEventListener("change", (e) => {
-      const f = e.target.files?.[0];
+      const files = [...(e.target.files ?? [])].filter((f) => f.type.startsWith("image/"));
       e.target.value = "";
-      if (f) snapRecognize(f);
+      if (files.length === 1) snapRecognize(files[0], files[0].lastModified || null);
+      else if (files.length > 1) snapBatch(files);
     });
   }
   document.getElementById("snap-settings-btn").addEventListener("click", (e) => {
@@ -1442,11 +1465,11 @@ async function archUpdateCount() {
 }
 
 // Nach einer Erkennung: Eintrag anlegen
-async function archSaveScan(imgUrl, first, hit) {
+async function archSaveScan(imgUrl, first, hit, photoAt = null) {
   try {
     const top = hit.query ? quickSearch(hit.query).list[0] : null;
     const entry = {
-      id: Date.now(), at: new Date().toISOString(), thumb: await archThumb(imgUrl),
+      id: Date.now(), at: new Date().toISOString(), photoAt: photoAt ? new Date(photoAt).toISOString() : null, thumb: await archThumb(imgUrl),
       rec: first, query: hit.query ?? "", exact: Boolean(hit.exact), card: top ? archCardInfo(top) : null,
     };
     await archPut(entry);
@@ -1478,6 +1501,12 @@ function archCurrent(card) {
   return archIdx.get(card.i) ?? null;
 }
 
+// Fotodatum nur zeigen, wenn es deutlich vor dem Scan liegt (z. B. alte Screenshots)
+function archWhen(e) {
+  const scan = `Gescannt am ${fmtDateTime(e.at)}`;
+  if (!e.photoAt || new Date(e.at) - new Date(e.photoAt) < 10 * 60 * 1000) return scan;
+  return `Foto vom ${fmtDateTime(e.photoAt)} · ins Archiv am ${fmtDateTime(e.at)}`;
+}
 const fmtDateTime = (iso) => new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 async function renderArchive() {
@@ -1508,7 +1537,7 @@ async function renderArchive() {
     if (!c) {
       return `<article class="arch-item"><img class="arch-thumb" src="${esc(e.thumb)}" alt="Scan">
         <div class="qbody"><div class="qname">${esc(rec.pokemon_de || rec.card_name || "Unbekannte Karte")}</div>
-        <div class="qmeta">Gescannt am ${fmtDateTime(e.at)} · erkannt: ${recDesc || "–"}</div>
+        <div class="qmeta">${archWhen(e)} · erkannt: ${recDesc || "–"}</div>
         <div class="qnone">Keine passende Karte in der Datenbank gefunden.</div>
         <div class="qfoot"><button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div></div></article>`;
     }
@@ -1518,7 +1547,7 @@ async function renderArchive() {
       <div class="qbody">
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.exact ? "" : ' <span class="arch-unsure">unsicher</span>'}</div>
         <div class="qmeta">${set}</div>
-        <div class="qmeta">Gescannt am ${fmtDateTime(e.at)}${recDesc ? ` · erkannt: ${recDesc}` : ""}</div>
+        <div class="qmeta">${archWhen(e)}${recDesc ? ` · erkannt: ${recDesc}` : ""}</div>
         <div class="qprices">
           ${priceCell("Ø 30 beim Scan", then30)}${priceCell("Ø 30 heute", now30, true)}${priceCell("Ø 7 heute", now?.a7 ?? null)}
         </div>
