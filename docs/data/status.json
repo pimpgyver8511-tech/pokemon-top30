@@ -1,6 +1,6 @@
 {
- "updated": "2026-10-22T21:05:49.002Z",
- "seconds": 856,
+ "updated": "2026-10-23T10:09:18.606Z",
+ "seconds": 831,
  "sets": [
   "30th-c",
   "30th",
@@ -37,7 +37,7 @@
  ],
  "warnings": [
   "30 Jahre: Klassische Sammlung (30th-c): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%2230th%20Classic%20Collection%22: HTTP 502",
+  "  pokemontcg.io: kein Set \"30th Classic Collection\" gefunden",
   "30 Jahre: Klassische Sammlung (30th-c): noch keine Preise – wird mit Hinweis angezeigt",
   "  Karten laut TCGdex: 30, cardCount: {\"firstEd\":0,\"holo\":0,\"normal\":0,\"official\":0,\"reverse\":0,\"total\":30}",
   "  de 30th-c-001 Glurak: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
@@ -47,6 +47,7 @@
   "  de 30th-c-003 Metagross: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
   "  en 30th-c-003 Metagross: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
   "30 Jahre (30th): keine Preise bei TCGdex – versuche pokemontcg.io",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%2230th%20Celebration%22: HTTP 502",
   "30 Jahre (30th): noch keine Preise – wird mit Hinweis angezeigt",
   "  Karten laut TCGdex: 158, cardCount: {\"firstEd\":0,\"holo\":0,\"normal\":0,\"official\":128,\"reverse\":0,\"total\":158}",
   "  de 30th-001 Owei: pricing={\"cardmarket\":null,\"tcgplayer\":null}",
