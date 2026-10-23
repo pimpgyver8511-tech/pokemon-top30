@@ -234,6 +234,17 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .screen-side { display: grid; gap: 8px; min-width: 0; }
 .screen-auto { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; }
 @media (max-width: 640px) { .screen-box { grid-template-columns: 1fr; } }
+.grade-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.grade-chips button {
+  font: inherit; font-size: .85rem; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.grade-chips button[aria-pressed="true"] { background: var(--foil); border-color: var(--foil); color: #171a24; }
+.grade-row {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+}
+.grade-row img, .grade-row .no-img { width: 64px; aspect-ratio: 245 / 342; border-radius: 4px; background: var(--line); display: grid; place-items: center; color: var(--muted); }
 .snap-batch { margin: 0; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); font-size: .92rem; }
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
@@ -301,9 +312,10 @@ html { scroll-behavior: smooth; }
       <select id="set-filter" aria-label="Set auswählen"><option value="">Alle Sets</option></select>
       <input id="search" type="search" placeholder="Karte suchen, z. B. Glurak" aria-label="Karte suchen">
       <div class="view-toggle" role="group" aria-label="Ansicht">
-        <button type="button" id="view-sets" aria-pressed="true">Nach Set</button>
-        <button type="button" id="view-all" aria-pressed="false">Alle Sets zusammen</button>
-        <button type="button" id="view-quick" aria-pressed="false">Schnellsuche</button>
+        <button type="button" id="view-sets" aria-pressed="true">Sets</button>
+        <button type="button" id="view-all" aria-pressed="false">Rangliste</button>
+        <button type="button" id="view-quick" aria-pressed="false">Suche</button>
+        <button type="button" id="view-grade" aria-pressed="false">Grading</button>
         <button type="button" id="view-archive" aria-pressed="false">Archiv</button>
       </div>
     </div>
@@ -361,6 +373,14 @@ html { scroll-behavior: smooth; }
         placeholder="z. B. Dragonite deutsch oder Glurak japanisch">
       <p class="quick-hint" id="quick-hint">Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.</p>
       <div id="quick-results" class="quick-results"></div>
+    </section>
+    <section id="grade" class="quick" hidden>
+      <label for="grade-input" class="quick-label">Gegradete Karten nachschlagen</label>
+      <input id="grade-input" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
+        placeholder="z. B. Praktibalk 183 oder Timburr 183">
+      <div id="grade-chips" class="grade-chips" role="group" aria-label="Grad"></div>
+      <p class="quick-hint">Karte auswählen, dann bei PriceCharting die Preise je Grad (PSA, BGS, CGC) und abgeschlossene Auktionen ansehen oder die verkauften eBay-Angebote öffnen. Beides öffnet sich in einem neuen Tab.</p>
+      <div id="grade-results" class="quick-results"></div>
     </section>
     <section id="archive" class="archive" hidden>
       <div class="set-head"><h2>Archiv</h2><span class="set-meta" id="arch-meta"></span></div>
@@ -493,7 +513,7 @@ function drawMovers(show) {
 }
 
 // Ansicht: "sets" = eine Tabelle pro Set, "all" = eine Gesamtrangliste über alle Sets
-let view = { "#rangliste": "all", "#suche": "quick", "#archiv": "archive" }[location.hash] ?? "sets";
+let view = { "#rangliste": "all", "#suche": "quick", "#grading": "grade", "#archiv": "archive" }[location.hash] ?? "sets";
 const PAGE = 100;
 let shown = PAGE;
 
@@ -520,16 +540,19 @@ function render() {
   const q = document.getElementById("search").value.trim().toLowerCase();
   const quick = view === "quick";
   const archive = view === "archive";
-  const other = quick || archive; // Ansichten ohne Set-Tabellen
+  const grade = view === "grade";
+  const other = quick || archive || grade; // Ansichten ohne Set-Tabellen
   for (const id of ["movers", "sets"]) if (other) document.getElementById(id).hidden = true;
   document.querySelector("main .note").hidden = other;
   document.getElementById("sets").hidden = other;
   document.getElementById("quick").hidden = !quick;
   document.getElementById("archive").hidden = !archive;
+  document.getElementById("grade").hidden = !grade;
   document.getElementById("set-filter").hidden = other;
   document.getElementById("search").hidden = other;
   if (quick) return openQuick();
   if (archive) return renderArchive();
+  if (grade) return openGrade();
   if (view === "all") return renderAll(setId, q);
   const out = [];
   for (const s of data.sets) {
@@ -1810,6 +1833,71 @@ function screenInit() {
   });
 }
 
+// ---------- Grading-Suche: passende Karte finden, dann PriceCharting / eBay-Verkäufe öffnen ----------
+let gradeSel = "";
+const GRADES = [["", "Alle"], ["PSA 10", "PSA 10"], ["PSA 9", "PSA 9"], ["BGS 10", "BGS 10"], ["CGC 10", "CGC 10"]];
+
+// Englischer Kartenname (PriceCharting und eBay arbeiten mit englischen Namen)
+function gradeEnName(c) {
+  if (c.e) return c.e;
+  if (!c.L) return c.n;
+  const sp = c.p?.length ? c.p.map((id) => speciesLabel.get(id)?.en).filter(Boolean).join(" & ") : "";
+  return sp || c.n;
+}
+
+function gradeQuery(c) {
+  const no = String(c.no ?? "").replace(/^0+(?=\d)/, "");
+  const lang = c.L === "ja" ? "japanese" : c.L === "ko" ? "korean" : c.L?.startsWith("zh") ? "chinese" : "";
+  return [gradeEnName(c), no, lang].filter(Boolean).join(" ");
+}
+
+async function openGrade() {
+  quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+  await quickLoading;
+  renderGrade();
+  try { document.getElementById("grade-input").focus({ preventScroll: true }); } catch {}
+}
+
+function renderGrade() {
+  const box = document.getElementById("grade-results");
+  document.getElementById("grade-chips").innerHTML = GRADES
+    .map(([v, l]) => `<button type="button" data-grade="${v}" aria-pressed="${v === gradeSel}">${l}</button>`).join("");
+  if (!quickData) { box.innerHTML = '<div class="status">Kartendaten werden geladen …</div>'; return; }
+  const input = document.getElementById("grade-input").value.trim();
+  if (!input) { box.innerHTML = ""; return; }
+  const { list, total } = quickSearch(input);
+  if (!list.length) { box.innerHTML = '<div class="status">Keine Karte gefunden. Anderen Namen oder nur die Nummer versuchen.</div>'; return; }
+  box.innerHTML = `<p class="quick-hint">${total > list.length ? `Die ${list.length} teuersten von ${total} Treffern` : `${total} Treffer`} · Rohpreis = Cardmarket Ø 30 Tage (ungegradet)</p>` +
+    list.slice(0, 25).map((c) => {
+      const set = quickData.sets[c.s];
+      const q = gradeQuery(c);
+      const qg = [q, gradeSel].filter(Boolean).join(" ");
+      const pc = `https://www.pricecharting.com/search-products?type=prices&q=${encodeURIComponent(q)}`;
+      const ebay = `https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent(qg + " pokemon")}&LH_Sold=1&LH_Complete=1`;
+      const img = c.img ? `<img loading="lazy" src="${esc(c.img)}" alt="${esc(c.n)}">` : '<span class="no-img">?</span>';
+      return `<article class="grade-row">${img}
+        <div class="qbody">
+          <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}</div>
+          <div class="qmeta">${esc(set.name)} · Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""} · Rohpreis ${fmtPrice(c.a30 ?? null)}</div>
+          <div class="qfoot">
+            <a class="cm-link" href="${esc(pc)}" target="_blank" rel="noopener">PriceCharting ↗</a>
+            <a class="cm-link" href="${esc(ebay)}" target="_blank" rel="noopener">eBay verkauft${gradeSel ? " · " + esc(gradeSel) : ""} ↗</a>
+          </div>
+        </div></article>`;
+    }).join("");
+}
+
+function gradeInit() {
+  let t;
+  document.getElementById("grade-input").addEventListener("input", () => { clearTimeout(t); t = setTimeout(renderGrade, 120); });
+  document.getElementById("grade-chips").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-grade]");
+    if (!b) return;
+    gradeSel = b.dataset.grade;
+    renderGrade();
+  });
+}
+
 const pricedSets = () => data.sets.filter((s) => !s.pending);
 
 async function init() {
@@ -1837,7 +1925,8 @@ async function init() {
     document.getElementById("view-all").setAttribute("aria-pressed", String(v === "all"));
     document.getElementById("view-quick").setAttribute("aria-pressed", String(v === "quick"));
     document.getElementById("view-archive").setAttribute("aria-pressed", String(v === "archive"));
-    const hash = { all: "#rangliste", quick: "#suche", archive: "#archiv" }[v];
+    document.getElementById("view-grade").setAttribute("aria-pressed", String(v === "grade"));
+    const hash = { all: "#rangliste", quick: "#suche", grade: "#grading", archive: "#archiv" }[v];
     try { history.replaceState(null, "", hash ?? location.pathname + location.search); } catch {}
     render();
     window.scrollTo(0, 0);
@@ -1846,6 +1935,8 @@ async function init() {
   document.getElementById("view-all").addEventListener("click", () => setView("all"));
   document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
   document.getElementById("view-archive").addEventListener("click", () => setView("archive"));
+  document.getElementById("view-grade").addEventListener("click", () => setView("grade"));
+  gradeInit();
   document.getElementById("listen-btn").addEventListener("click", () => (listening ? stopListening() : startListening()));
   document.getElementById("listen-history").addEventListener("click", (e) => {
     const b = e.target.closest("[data-q]");
