@@ -12,7 +12,7 @@ Zuletzt aktualisiert: 22.10.2026 (abends)
   - Internationale, japanische, koreanische, chinesische Karten und Promos (SVP, SWSH, MEP)
   - Preise: Ø 1 / 7 / 30 Tage, Trend, Ab-Preis, Cardmarket-Link
 - **Mithören:** Spracherkennung (Deutsch) mit lautähnlicher Namenserkennung, Smalltalk-Filter, Protokoll „Was gehört wurde“
-- **Bild erkennen:** Screenshot hochladen, einfügen oder per Drag & Drop; Claude erkennt die Karte (eigener API-Schlüssel nötig)
+- **Bild erkennen:** Screenshot hochladen, einfügen oder am PC per Drag & Drop irgendwo auf die Seite ziehen (auch mehrere); Claude erkennt die Karte (eigener API-Schlüssel nötig)
 - **Archiv** (`#archiv`): jede erkannte Karte mit Scan-Vorschau, Preis beim Scan und heute, Gesamtwert-Kasten (Ø 30 Tage, heute vs. beim Scan), mehrere Bilder auf einmal, CSV-Export; nach einem Scan „Diese ist es“ zum Korrigieren. Gespeichert nur auf dem Gerät (IndexedDB).
 - **Foto machen:** öffnet direkt die Kamera (auch in der installierten App)
 - **Als App installierbar,** Screenshots über das Android-Teilen-Menü direkt an die Seite schicken

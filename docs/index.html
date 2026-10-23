@@ -190,7 +190,15 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
-.quick.drop { outline: 3px dashed var(--accent); outline-offset: 6px; border-radius: 8px; }
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); padding: 24px;
+}
+.drop-overlay > div {
+  border: 4px dashed var(--accent); border-radius: 16px; padding: 48px 32px; text-align: center; max-width: 520px; width: 100%;
+  font-family: var(--font-display); font-weight: 800; font-stretch: 112%; font-size: 1.6rem; color: var(--ink); background: var(--surface);
+}
+.drop-overlay small { display: block; margin-top: 8px; font-family: var(--font-body); font-weight: 400; font-size: .95rem; color: var(--muted); }
 .archive { display: grid; gap: 12px; }
 .arch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .arch-actions button, .arch-confirm button, .arch-btn {
@@ -275,6 +283,7 @@ html { scroll-behavior: smooth; }
 </style>
 </head>
 <body>
+<div id="drop-overlay" class="drop-overlay" hidden><div>Bild hier ablegen<small>Die Karte wird erkannt und landet im Archiv. Mehrere Bilder gehen auch.</small></div></div>
 <header class="top">
   <div class="wrap">
     <div class="brand">
@@ -1409,14 +1418,23 @@ function snapInit() {
     const f = snapFromItems(e.clipboardData?.items);
     if (f) { e.preventDefault(); snapRecognize(f); }
   });
-  const zone = document.getElementById("quick");
-  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drop"); });
-  zone.addEventListener("dragleave", () => zone.classList.remove("drop"));
-  zone.addEventListener("drop", (e) => {
+  // Drag & Drop am PC: Bilder irgendwo auf der Seite ablegen, auch mehrere auf einmal
+  const overlay = document.getElementById("drop-overlay");
+  const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+  let dragDepth = 0;
+  window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; dragDepth++; overlay.hidden = false; });
+  window.addEventListener("dragleave", (e) => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; overlay.hidden = true; } });
+  window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
     e.preventDefault();
-    zone.classList.remove("drop");
-    const f = snapFromItems(e.dataTransfer?.files);
-    if (f) snapRecognize(f);
+    dragDepth = 0;
+    overlay.hidden = true;
+    const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    if (view !== "quick") document.getElementById("view-quick").click();
+    if (files.length === 1) snapRecognize(files[0], files[0].lastModified || null);
+    else snapBatch(files);
   });
   snapFromShare();
 }
