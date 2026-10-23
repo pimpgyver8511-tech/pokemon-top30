@@ -227,6 +227,13 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .arch-thumb { width: 84px; max-height: 150px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
 .arch-unsure { font-size: .7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--foil) 30%, var(--surface)); vertical-align: 2px; }
 .arch-picked { font-size: .85rem; font-weight: 700; color: var(--up); }
+.screen-btn { flex: none; width: 100%; background: var(--up); }
+.screen-btn[aria-pressed="true"] { background: var(--down); }
+.screen-box { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.screen-box video { width: 100%; border-radius: 6px; background: #000; aspect-ratio: 16 / 9; object-fit: contain; }
+.screen-side { display: grid; gap: 8px; min-width: 0; }
+.screen-auto { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; }
+@media (max-width: 640px) { .screen-box { grid-template-columns: 1fr; } }
 .snap-batch { margin: 0; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); font-size: .92rem; }
 .quick-hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .quick-results { display: grid; gap: 10px; }
@@ -314,6 +321,18 @@ html { scroll-behavior: smooth; }
         <label for="snap-camera" class="listen-btn snap-btn" role="button" tabindex="0">Foto machen</label>
         <input id="snap-camera" type="file" accept="image/*" capture="environment" hidden>
         <button type="button" id="snap-settings-btn" class="snap-gear" aria-expanded="false" aria-controls="snap-settings">Einstellungen</button>
+      </div>
+      <button type="button" id="screen-btn" class="listen-btn screen-btn" aria-pressed="false" hidden>Bildschirm mitlesen</button>
+      <div id="screen-box" class="screen-box" hidden>
+        <video id="screen-video" muted playsinline></video>
+        <div class="screen-side">
+          <p id="screen-status" class="snap-msg"></p>
+          <div class="snap-actions">
+            <button type="button" id="screen-now">Jetzt erkennen (Leertaste)</button>
+            <label class="screen-auto"><input type="checkbox" id="screen-auto" checked> Automatisch bei neuer Karte</label>
+          </div>
+          <p class="quick-hint">Tipp: Whatnot und diese Seite in zwei Fenstern nebeneinander. Erkannt wird nur der mittlere Bildbereich (Video), der Chat am Rand stört nicht. Mit „Schnell“ kostet eine Erkennung unter 0,1 Cent.</p>
+        </div>
       </div>
       <div id="snap-settings" class="snap-settings" hidden>
         <label for="snap-key">Claude API-Schlüssel für die Bilderkennung</label>
@@ -1240,7 +1259,7 @@ function snapWarning(card, hit) {
 }
 
 // Liefert "ok", "none" (keine Karte), "nokey" oder "error"
-async function snapRecognize(blob, photoAt = null) {
+async function snapRecognize(blob, photoAt = null, opts = {}) {
   if (snapBusy) return "error";
   const key = snapGet("snapKey", "");
   if (view !== "quick") document.getElementById("view-quick").click();
@@ -1295,7 +1314,9 @@ async function snapRecognize(blob, photoAt = null) {
     for (let i = 0; i < 75 && ((needAsia && asiaState === "loading") || (needOld && oldState === "loading")); i++) await sleep(200);
     const token = ++snapToken;
     const hit = snapRenderResult(img, cards, secs);
-    await archSaveScan(img.url, first, hit, photoAt);
+    // Aus dem Stream: dieselbe Karte direkt hintereinander nur einmal archivieren
+    if (!opts.fromScreen || hit.query !== lastAutoQuery) await archSaveScan(img.url, first, hit, photoAt);
+    if (opts.fromScreen) lastAutoQuery = hit.query ?? "";
     // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
     if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
       (async () => {
@@ -1437,6 +1458,7 @@ function snapInit() {
     else snapBatch(files);
   });
   snapFromShare();
+  screenInit();
 }
 
 // ---------- Archiv: erkannte Karten auf diesem Gerät speichern (IndexedDB) ----------
@@ -1655,6 +1677,136 @@ function archInit() {
     await archSetCard(c, true);
     archPickedI = c.i;
     renderQuick();
+  });
+}
+
+// ---------- Bildschirm mitlesen (PC): Whatnot-Tab freigeben, Karten direkt aus dem Stream erkennen ----------
+const screenSupported = Boolean(navigator.mediaDevices?.getDisplayMedia) && !/Android|iPhone|iPad/i.test(navigator.userAgent);
+let screenStream = null;
+let screenTimer = null;
+let screenAuto = true;
+let screenCount = 0;
+let lastAutoQuery = "";
+const screenState = { prev: null, scanned: null, stable: 0, changed: false, lastScanAt: 0 };
+
+// Aktuelles Bild aus dem geteilten Tab als JPEG
+async function screenFrame() {
+  const v = document.getElementById("screen-video");
+  if (!v.videoWidth) return null;
+  const c = document.createElement("canvas");
+  c.width = v.videoWidth;
+  c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  return new Promise((res) => c.toBlob(res, "image/jpeg", 0.9));
+}
+
+// Kleiner Graustufen-Fingerabdruck der Bildmitte (Videobereich), Chat am Rand wird ignoriert
+function screenSignature() {
+  const v = document.getElementById("screen-video");
+  if (!v.videoWidth) return null;
+  const W = 48, H = 27;
+  const c = screenSignature.c ??= Object.assign(document.createElement("canvas"), { width: W, height: H });
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  const sx = v.videoWidth * 0.25, sy = v.videoHeight * 0.1, sw = v.videoWidth * 0.5, sh = v.videoHeight * 0.8;
+  ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+  const d = ctx.getImageData(0, 0, W, H).data;
+  const g = new Uint8Array(W * H);
+  for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] * 3 + d[i * 4 + 1] * 6 + d[i * 4 + 2]) / 10;
+  return g;
+}
+// Anteil der Bildpunkte, die sich deutlich verändert haben (0 bis 1)
+const sigDiff = (a, b) => {
+  if (!a || !b) return 1;
+  let n = 0;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 30) n++;
+  return n / a.length;
+};
+
+function screenStatus(text) {
+  document.getElementById("screen-status").textContent = text;
+}
+
+async function screenScan(auto) {
+  if (snapBusy) return;
+  const blob = await screenFrame();
+  if (!blob) return;
+  screenState.lastScanAt = Date.now();
+  screenState.scanned = screenSignature();
+  screenState.changed = false;
+  screenCount++;
+  screenStatus(`${auto ? "Neue Karte erkannt, wird ausgewertet" : "Wird ausgewertet"} … (${screenCount} Erkennung${screenCount === 1 ? "" : "en"} in dieser Sitzung)`);
+  const r = await snapRecognize(blob, null, { fromScreen: true });
+  if (r !== "nokey") screenStatus(`Läuft · ${screenCount} Erkennung${screenCount === 1 ? "" : "en"} in dieser Sitzung${screenAuto ? " · automatisch bei neuer Karte" : ""}`);
+}
+
+// Automatik: Bild hat sich deutlich verändert und ist seit 2 s ruhig -> erkennen (höchstens alle 10 s)
+function screenTick() {
+  const sig = screenSignature();
+  if (!sig) return;
+  const moving = sigDiff(sig, screenState.prev) > 0.03;   // mehr als 3 % bewegt sich noch
+  screenState.stable = moving ? 0 : screenState.stable + 1;
+  screenState.prev = sig;
+  if (sigDiff(sig, screenState.scanned) > 0.1) screenState.changed = true; // mehr als 10 % anders als beim letzten Scan
+  if (screenAuto && screenState.changed && screenState.stable >= 2 && Date.now() - screenState.lastScanAt > 10000) screenScan(true);
+}
+
+async function screenStart() {
+  if (!snapGet("snapKey", "")) {
+    document.getElementById("snap-settings").hidden = false;
+    screenStatus("Bitte zuerst unter „Einstellungen“ den Claude API-Schlüssel eintragen.");
+    document.getElementById("screen-box").hidden = false;
+    return;
+  }
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 5 }, audio: false, selfBrowserSurface: "exclude", surfaceSwitching: "include",
+    });
+  } catch {
+    screenStatus("Freigabe abgebrochen. Zum Starten erneut klicken und den Whatnot-Tab oder das Fenster auswählen.");
+    document.getElementById("screen-box").hidden = false;
+    return;
+  }
+  const v = document.getElementById("screen-video");
+  v.srcObject = screenStream;
+  await v.play().catch(() => {});
+  screenStream.getVideoTracks()[0].addEventListener("ended", screenStop);
+  Object.assign(screenState, { prev: null, scanned: null, stable: 0, changed: true, lastScanAt: 0 });
+  screenCount = 0;
+  lastAutoQuery = "";
+  document.getElementById("screen-box").hidden = false;
+  document.getElementById("screen-btn").textContent = "Mitlesen beenden";
+  document.getElementById("screen-btn").setAttribute("aria-pressed", "true");
+  screenStatus("Läuft · halte eine Karte in den Stream oder klicke „Jetzt erkennen“ (Leertaste).");
+  snapLoadSdk().catch(() => {});
+  clearInterval(screenTimer);
+  screenTimer = setInterval(screenTick, 1000);
+}
+
+function screenStop() {
+  clearInterval(screenTimer);
+  screenStream?.getTracks().forEach((t) => t.stop());
+  screenStream = null;
+  document.getElementById("screen-video").srcObject = null;
+  document.getElementById("screen-btn").textContent = "Bildschirm mitlesen";
+  document.getElementById("screen-btn").setAttribute("aria-pressed", "false");
+  screenStatus(screenCount ? `Beendet · ${screenCount} Erkennungen` : "Beendet");
+}
+
+function screenInit() {
+  if (!screenSupported) return;
+  document.getElementById("screen-btn").hidden = false;
+  document.getElementById("screen-btn").addEventListener("click", () => (screenStream ? screenStop() : screenStart()));
+  document.getElementById("screen-now").addEventListener("click", () => screenScan(false));
+  document.getElementById("screen-auto").addEventListener("change", (e) => { screenAuto = e.target.checked; });
+  // Leertaste = jetzt erkennen (nicht beim Tippen)
+  // Leertaste löst bei Knöpfen erst beim Loslassen einen Klick aus: das unterdrücken
+  document.addEventListener("keyup", (e) => { if (e.code === "Space" && screenStream) e.preventDefault(); }, true);
+  document.addEventListener("keydown", (e) => {
+    // Auch wenn gerade ein Knopf ausgewählt ist: Leertaste soll erkennen, nicht den Knopf drücken
+    if (e.code !== "Space" || !screenStream || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName ?? "")) return;
+    e.preventDefault();
+    document.activeElement?.blur?.();
+    screenScan(false);
   });
 }
 
