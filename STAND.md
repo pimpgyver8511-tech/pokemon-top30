@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 23.10.2026
+Zuletzt aktualisiert: 01.11.2026
 
 ## Was fertig ist
 
@@ -13,7 +13,7 @@ Zuletzt aktualisiert: 23.10.2026
   - Preise: Ø 1 / 7 / 30 Tage, Trend, Ab-Preis, Cardmarket-Link
 - **Mithören:** Spracherkennung (Deutsch) mit lautähnlicher Namenserkennung, Smalltalk-Filter, Protokoll „Was gehört wurde“
 - **Bild erkennen:** Screenshot hochladen, einfügen oder am PC per Drag & Drop irgendwo auf die Seite ziehen (auch mehrere); Claude erkennt die Karte (eigener API-Schlüssel nötig)
-- **Archiv** (`#archiv`): jede erkannte Karte mit Scan-Vorschau, Preis beim Scan und heute, Gesamtwert-Kasten (Ø 30 Tage, heute vs. beim Scan), mehrere Bilder auf einmal, CSV-Export; nach einem Scan „Diese ist es“ zum Korrigieren. Gespeichert nur auf dem Gerät (IndexedDB).
+- **Archiv** (`#archiv`): jede erkannte Karte mit Scan-Vorschau, Preis beim Scan und heute, Gesamtwert-Kasten (Ø 30 Tage, heute vs. beim Scan), mehrere Bilder auf einmal, CSV-Export, Suchfeld (wie Schnellsuche: Name in jeder Sprache, Sprache, Nummer, Set; Gesamtwert zeigt dann nur die Treffer); nach einem Scan „Diese ist es“ zum Korrigieren. Gespeichert nur auf dem Gerät (IndexedDB).
 - **Bildschirm mitlesen (PC, Chrome/Edge):** Whatnot-Tab oder -Fenster freigeben; „Jetzt erkennen“ (Leertaste) oder automatisch bei neuer Karte (Bildmitte vergleicht >10 % Änderung, 2 s ruhig, höchstens alle 10 s). Gleiche Karte hintereinander nur einmal im Archiv.
 - **Grading** (`#grading`): eigene Suche für gegradete Karten. Karte finden (gleiche Suche wie Schnellsuche), Grad wählen (PSA 10/9, BGS 10, CGC 10), dann Link zu PriceCharting (Preise je Grad, abgeschlossene Auktionen) und zu verkauften eBay-Angeboten. Keine Preise von PriceCharting auf der Seite selbst (Abrufen verbieten deren Nutzungsbedingungen, API kostet Geld).
 - **Foto machen:** öffnet direkt die Kamera (auch in der installierten App)
@@ -39,6 +39,10 @@ Zuletzt aktualisiert: 23.10.2026
 ## Erledigt am 23.10.2026
 
 - Grading-Reiter mit PriceCharting- und eBay-Links; Reiter umbenannt: Sets, Rangliste, Suche, Grading, Archiv
+
+## Erledigt am 01.11.2026
+
+- Archiv durchsuchbar; Archiv-Zähler im Reiter als kleine Zahl, damit die Reiter am Handy nicht umbrechen
 
 ## Offen
 

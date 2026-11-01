@@ -128,8 +128,10 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .view-toggle { display: flex; flex: 1 1 100%; border-radius: 6px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--bg) 35%, transparent); }
 .view-toggle button {
   flex: 1; font: inherit; font-size: .9rem; font-weight: 700; padding: 7px 10px; cursor: pointer;
-  border: 0; background: transparent; color: var(--bg);
+  border: 0; background: transparent; color: var(--bg); white-space: nowrap;
 }
+.view-toggle .tab-count { font-size: .7rem; vertical-align: super; margin-left: 2px; opacity: .8; }
+@media (max-width: 480px) { .view-toggle button { padding: 7px 4px; font-size: .85rem; } }
 .view-toggle button[aria-pressed="true"] { background: var(--foil); color: #171a24; }
 .more-btn {
   justify-self: center; font: inherit; font-weight: 700; padding: 9px 16px; border-radius: 6px; cursor: pointer;
@@ -137,8 +139,8 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 }
 .quick { display: grid; gap: 10px; }
 .quick-label { font-family: var(--font-display); font-weight: 700; font-stretch: 112%; font-size: 1.15rem; }
-#quick-input {
-  width: 100%; font: inherit; font-size: 1.15rem; padding: 12px 14px; border-radius: 8px;
+#quick-input, #grade-input, #arch-search {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 1.15rem; padding: 12px 14px; border-radius: 8px;
   border: 2px solid var(--accent); background: var(--surface); color: var(--ink);
 }
 .listen { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -209,6 +211,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .arch-confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border-radius: 8px; border: 1px solid var(--down); background: color-mix(in srgb, var(--down) 10%, var(--surface)); }
 #arch-clear-yes { border-color: var(--down); color: var(--down); }
 .arch-list { display: grid; gap: 10px; }
+#arch-search { margin: 4px 0 10px; }
 .arch-total {
   display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: center;
   padding: 14px; border-radius: 10px; background: var(--ink); color: var(--bg); border-bottom: 4px solid var(--foil);
@@ -384,6 +387,8 @@ html { scroll-behavior: smooth; }
     </section>
     <section id="archive" class="archive" hidden>
       <div class="set-head"><h2>Archiv</h2><span class="set-meta" id="arch-meta"></span></div>
+      <input id="arch-search" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
+        placeholder="Archiv durchsuchen, z. B. Glurak japanisch" aria-label="Archiv durchsuchen" hidden>
       <div id="arch-total" class="arch-total" hidden></div>
       <p class="quick-hint">Alle erkannten Karten mit dem Preis beim Scan und heute. Gespeichert nur auf diesem Gerät; zur Sicherung als CSV exportieren.</p>
       <div class="arch-actions">
@@ -1536,7 +1541,7 @@ function archCardInfo(c) {
 async function archUpdateCount() {
   let n = 0;
   try { n = (await archAll()).length; } catch {}
-  document.getElementById("view-archive").textContent = n ? `Archiv (${n})` : "Archiv";
+  document.getElementById("view-archive").innerHTML = n ? `Archiv<span class="tab-count">${n}</span>` : "Archiv";
 }
 
 // Nach einer Erkennung: Eintrag anlegen
@@ -1593,27 +1598,36 @@ async function renderArchive() {
   }
   quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
   await quickLoading;
-  // Gesamtwert nach Ø 30 Tage: heute und zum Zeitpunkt der Scans
+  const all = entries;
+  const search = document.getElementById("arch-search");
+  search.hidden = !all.length;
+  const qs = search.value.trim();
+  if (qs) { const q = parseQuery(qs); entries = all.filter((e) => archMatch(e, q)); }
+  // Gesamtwert nach Ø 30 Tage: heute und zum Zeitpunkt der Scans (bei Suche nur die Treffer)
   let total = 0, totalThen = 0, priced = 0;
   for (const e of entries) {
     const now = archCurrent(e.card)?.a30 ?? e.card?.a30 ?? null;
     if (now != null) { total += now; priced++; }
     totalThen += e.card?.a30 ?? 0;
   }
-  document.getElementById("arch-meta").textContent = entries.length
-    ? `${entries.length} gescannte Karte${entries.length === 1 ? "" : "n"}`
-    : "";
+  document.getElementById("arch-meta").textContent = !all.length ? ""
+    : qs ? `${entries.length} von ${all.length} Karten`
+    : `${all.length} gescannte Karte${all.length === 1 ? "" : "n"}`;
   const tot = document.getElementById("arch-total");
   tot.hidden = !entries.length;
   tot.innerHTML = entries.length ? `
-    <div class="arch-total-main"><span>Gesamtwert (Ø 30 Tage)</span><b>${fmtPrice(total)}</b></div>
+    <div class="arch-total-main"><span>${qs ? "Wert der Treffer" : "Gesamtwert"} (Ø 30 Tage)</span><b>${fmtPrice(total)}</b></div>
     <div class="arch-total-side">
       <div><span>Beim Scan</span><b>${fmtPrice(totalThen)}</b></div>
       <div><span>Veränderung</span>${totalThen ? chip(pct(total, totalThen)) : "–"}</div>
     </div>
     ${priced < entries.length ? `<p class="quick-hint">${entries.length - priced} Karte${entries.length - priced === 1 ? "" : "n"} ohne Preis nicht mitgezählt.</p>` : ""}` : "";
-  document.getElementById("arch-export").disabled = !entries.length;
-  document.getElementById("arch-clear").disabled = !entries.length;
+  document.getElementById("arch-export").disabled = !all.length;
+  document.getElementById("arch-clear").disabled = !all.length;
+  if (qs && !entries.length) {
+    list.innerHTML = '<div class="status">Keine Karte im Archiv passt zur Suche.</div>';
+    return;
+  }
   if (!entries.length) {
     list.innerHTML = '<div class="status">Noch keine Karten im Archiv. Jede Karte, die du über „Bild erkennen“, „Foto machen“ oder das Teilen-Menü erkennen lässt, landet automatisch hier.</div>';
     return;
@@ -1648,6 +1662,27 @@ async function renderArchive() {
   }).join("");
 }
 
+// Archiv-Suche: gleiche Eingabe wie die Schnellsuche (Name in jeder Sprache, Sprache, Nummer, Set)
+function archMatch(e, q) {
+  const c = e.card, rec = e.rec ?? {};
+  if (q.lang) {
+    const want = q.lang === "de" || q.lang === "en" ? "intl" : q.lang;
+    if (!c || groupOf(c) !== want) return false;
+  }
+  if (q.species.length) {
+    const ids = c?.p?.length ? c.p
+      : fold(`${rec.pokemon_de ?? ""} ${rec.pokemon_en ?? ""} ${rec.card_name ?? ""}`).split(" ").map((t) => speciesAlias.get(t)).filter(Boolean);
+    if (!q.species.every((id) => ids.includes(id))) return false;
+  }
+  const hay = fold([c?.n, c?.e, c?.set, c?.r, rec.pokemon_de, rec.pokemon_en, rec.card_name, rec.set_hint].filter(Boolean).join(" "));
+  if (q.num != null) {
+    const no = c ? normNo(c.no) : normNo(String(rec.number ?? "").split("/")[0]);
+    if (no === q.num) { if (q.total != null && c?.off && c.off !== q.total) return false; }
+    else if (!hay.split(" ").includes(q.num.toLowerCase())) return false;
+  }
+  return q.words.every((t) => hay.includes(t));
+}
+
 function archCsv(entries) {
   const num = (v) => (v == null ? "" : String(v).replace(".", ","));
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -1663,6 +1698,8 @@ function archCsv(entries) {
 
 function archInit() {
   archUpdateCount();
+  let archT;
+  document.getElementById("arch-search").addEventListener("input", () => { clearTimeout(archT); archT = setTimeout(renderArchive, 120); });
   document.getElementById("arch-list").addEventListener("click", async (e) => {
     const del = e.target.closest("[data-arch-del]");
     if (del) { await archDel(Number(del.dataset.archDel)); archUpdateCount(); renderArchive(); return; }
