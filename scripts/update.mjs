@@ -139,10 +139,14 @@ async function pokemontcgPrices(set) {
   try {
     const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`);
     const name = en?.name ?? set.name;
-    const found = await getJson(`${PTCG}/sets?q=${encodeURIComponent(`name:"${name}"`)}`);
-    const candidates = found?.data ?? [];
-    const match =
-      candidates.find((x) => x.releaseDate?.replaceAll("/", "-") === set.releaseDate) ?? candidates[0];
+    // Viele ältere Sets haben bei pokemontcg.io dieselbe Kennung (z. B. sma, gym1)
+    const byId = await getJson(`${PTCG}/sets/${encodeURIComponent(set.id)}`).catch(() => null);
+    let match = byId?.data && byId.data.releaseDate?.replaceAll("/", "-") === set.releaseDate ? byId.data : null;
+    if (!match) {
+      const found = await getJson(`${PTCG}/sets?q=${encodeURIComponent(`name:"${name}"`)}`);
+      const candidates = found?.data ?? [];
+      match = candidates.find((x) => x.releaseDate?.replaceAll("/", "-") === set.releaseDate) ?? candidates[0];
+    }
     if (!match) {
       console.warn(`  pokemontcg.io: kein Set "${name}" gefunden`);
       return null;
@@ -662,7 +666,21 @@ async function main() {
     const olderSets = await loadOlderSets(known);
     console.log(`Ältere internationale Sets: ${olderSets.length}`);
     const builtOld = [];
-    for (const st of olderSets) builtOld.push(await buildSet(st));
+    for (const st of olderSets) {
+      let b = await buildSet(st);
+      // Ohne jeden Cardmarket-Preis (TCGdex kennt das Produkt nicht, z. B. Glitzer-Tresor, Gym-Sets):
+      // erst pokemontcg.io (ebenfalls Cardmarket), dann TCGplayer
+      if (b.allCards.length && !b.allCards.some((c) => c.hasPrice)) {
+        console.warn(`${st.name} (${st.id}): keine Preise bei TCGdex – versuche pokemontcg.io`);
+        const fb = await pokemontcgPrices(st);
+        if (fb?.size) b = await buildSet(st, fb);
+        if (!b.allCards.some((c) => c.hasPrice)) {
+          const en = await getJson(`${API}/en/sets/${encodeURIComponent(st.id)}`).catch(() => null);
+          b = await addTcgplayer(b, { id: st.id, name: st.name, enName: en?.name ?? st.name, releaseDate: st.releaseDate });
+        }
+      }
+      builtOld.push(b);
+    }
     const old = toSearchData(builtOld, tag);
     for (const lang of ASIA_LANGS) {
       const part = await buildAsia(lang, old.sets.length, tag, false);
