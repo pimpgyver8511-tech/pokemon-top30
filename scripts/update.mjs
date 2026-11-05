@@ -349,8 +349,14 @@ function speciesIndex(species) {
 }
 
 // Gebaute Sets (aus buildSet) in die kompakte Form der Schnellsuche bringen
+// Englische Set-Namen (für Suche und Bilderkennung, die oft englische Set-Namen liest)
+let EN_SET_NAMES = new Map();
+
 function toSearchData(builtSets, tag) {
-  const sets = builtSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate, ...(s.priceSource ? { src: s.priceSource } : {}) }));
+  const sets = builtSets.map((s) => {
+    const ne = s.enName ?? EN_SET_NAMES.get(s.id);
+    return { id: s.id, name: s.name, off: s.official, date: s.releaseDate, ...(ne && ne !== s.name ? { ne } : {}), ...(s.priceSource ? { src: s.priceSource } : {}) };
+  });
   const cards = [];
   builtSets.forEach((s, si) => {
     for (const c of s.allCards) {
@@ -362,6 +368,7 @@ function toSearchData(builtSets, tag) {
       if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
       if (c.variant) row.v = c.variant;
       if (c.src === "tcgplayer") Object.assign(row, { x: "tp", usd: c.usd, tu: c.tpUrl });
+      if (c.pn) row.pn = c.pn;
       if (c.thumb) row.img = c.thumb;
       if (c.large && c.large !== c.thumb) row.big = c.large;
       row.u = c.url;
@@ -518,8 +525,10 @@ async function addTcgplayer(built, setInfo, deName = (n) => n) {
   if (!map?.some(Boolean) && !map?.extra?.length) return built;
   need.forEach((c, i) => {
     if (!map[i]) return;
-    const { tpName, ...p } = map[i];
+    const { tpName, tpNo, ...p } = map[i];
     Object.assign(c, p, { hasPrice: true });
+    // Reprints (z. B. Klassische Sammlung) tragen die Originalnummer: für Suche und Bilderkennung merken
+    if (tpNo && normNo(String(tpNo).split("/")[0]) !== normNo(c.no)) c.pn = String(tpNo);
   });
   // Karten, die TCGdex gar nicht kennt (z. B. Mew "RGB Rare" im 30-Jahre-Set), mit aufnehmen
   for (const x of map.extra ?? []) {
@@ -531,6 +540,7 @@ async function addTcgplayer(built, setInfo, deName = (n) => n) {
   const priced = built.allCards.filter((c) => c.hasPrice);
   built.cards = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
   built.priceSource = priced.every((c) => c.src === "tcgplayer") ? "tcgplayer" : "mixed";
+  if (setInfo.enName && setInfo.enName !== built.name) built.enName = setInfo.enName;
   built.fx = fx;
   console.log(`  ${built.name}: ${priced.length} Karten mit Preis (TCGplayer umgerechnet), Top ${built.cards.length}`);
   return built;
@@ -582,6 +592,11 @@ function makeDeNamer(species) {
 
 async function main() {
   const species = await loadSpecies();
+  try {
+    EN_SET_NAMES = new Map(((await getJson(`${API}/en/sets`)) ?? []).map((st) => [st.id, st.name]));
+  } catch (err) {
+    console.warn(`Englische Set-Namen nicht geladen: ${err.message}`);
+  }
   const sets = await loadSets();
   if (sets.length === 0) throw new Error("Keine Sets gefunden – API-Antwort prüfen");
   // Trainer-Galerie (…tg) und Galar-Galerie (…gg) gehören auf Cardmarket zum Hauptset.

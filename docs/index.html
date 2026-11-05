@@ -756,14 +756,14 @@ async function loadQuick() {
     for (const a of aliases) if (!speciesAlias.has(a)) speciesAlias.set(a, id);
   }
   indexCards(all.cards);
-  for (const st of all.sets) st._hay = fold(st.name);
+  for (const st of all.sets) st._hay = fold(`${st.name} ${st.ne ?? ""}`);
   quickData = all;
   // Asiatische und ältere Karten im Hintergrund nachladen (die aktuelle Suche geht schon)
   asiaState = "loading";
   oldState = "loading";
   const merge = (part) => {
     const off = quickData.sets.length;
-    for (const st of part.sets) { st._hay = fold(st.name); quickData.sets.push(st); }
+    for (const st of part.sets) { st._hay = fold(`${st.name} ${st.ne ?? ""}`); quickData.sets.push(st); }
     for (const c of part.cards) c.s += off;
     indexCards(part.cards);
     quickData.cards.push(...part.cards);
@@ -861,11 +861,13 @@ function quickSearch(query) {
       score += 10;
     }
     if (q.num != null) {
-      const sameNo = normNo(c.no) === q.num;
+      const [pnNo, pnTot] = c.pn ? String(c.pn).split("/") : [];
+      const samePn = Boolean(c.pn) && normNo(pnNo) === q.num;
+      const sameNo = normNo(c.no) === q.num || samePn;
       if (sameNo) score += 10;
       // Zahl kann auch der Set-Name sein (z. B. "151"), aber nur als ganzes Wort
       else if (!set._hay.split(" ").includes(q.num.toLowerCase())) continue;
-      if (q.total != null && sameNo && set.off === q.total) score += 5;
+      if (q.total != null && sameNo && (samePn ? Number(pnTot) === q.total : set.off === q.total)) score += 5;
     }
     let ok = true;
     for (const t of q.words) {
@@ -931,7 +933,7 @@ function renderQuick() {
       : art
         ? `<span class="art-wrap"><img class="art" loading="lazy" src="${esc(art)}" alt="Symbolbild ${esc(title)}" onerror="this.parentElement.outerHTML='<span class=&quot;no-img&quot;>?</span>'"><span class="art-tag">Symbolbild</span></span>`
         : '<span class="no-img">?</span>';
-    const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}`;
+    const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}${c.pn ? ` (gedruckt ${esc(c.pn)})` : ""}`;
     const rarity = c.r && c.r !== "None" ? esc(c.r) : "";
     const meta = [esc(set.name), no, rarity, c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
     const prices = isTp(c) && c.a30
@@ -1373,13 +1375,16 @@ function snapQueries(card) {
   const num = (card.number || "").replace(/^[A-Z]{2,5}\s+/i, "").trim();
   const base = [mega, name, ...mods].filter(Boolean).join(" ");
   // Ein markantes Wort aus dem Set-Namen (z. B. "expedition"), falls in der Datenbank vorhanden
-  const setWord = fold(card.set_hint).split(" ")
+  const setWords = fold(card.set_hint).split(" ")
     .filter((w) => w.length >= 4 && !["promo", "promos", "black", "star", "base", "set"].includes(w))
     .sort((a, b) => b.length - a.length)
-    .find((w) => quickData?.sets.some((st) => st._hay.split(" ").includes(w))) ?? "";
+    .filter((w) => quickData?.sets.some((st) => st._hay.split(" ").includes(w)));
+  const setWord = setWords[0] ?? "";
   // Nur Varianten mit tatsächlich vorhandener Nummer bzw. Set-Wort, sonst würde
   // z. B. [name, sprache, ""] zur lockersten Suche und gewänne zu früh
+  // Nummer + Set-Wort zuerst: trennt Reprints (z. B. Klassische Sammlung mit Originalnummer) vom Original
   const out = [
+    ...(num ? setWords.map((w) => [base, lang, num, w]) : []),
     num && [base, lang, num],
     setWord && [base, lang, setWord],
     setWord && [base, setWord],
@@ -1802,7 +1807,7 @@ async function renderArchive() {
         </div>${warnLine(priceWarn(now))}
         <div class="qfoot">${then30 && now30 ? chip(pct(now30, then30)) : ""}
           ${colArch.has(e.id) ? '<button type="button" class="arch-btn col-in" data-col-go>✓ In Sammlung</button>' : `<button type="button" class="arch-btn" data-col-arch="${e.id}">+ Sammlung</button>`}
-          <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}">Suchen</button>
+          <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}" data-arch-id="${e.id}">Andere Karte?</button>
           <a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>
           <button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div>
       </div></article>`;
@@ -1861,6 +1866,10 @@ function archInit() {
     if (s) {
       document.getElementById("view-quick").click();
       document.getElementById("quick-input").value = s.dataset.archSearch;
+      // In der Trefferliste kann dann mit "Diese ist es" die richtige Karte für diesen Scan gewählt werden
+      archLastId = Number(s.dataset.archId) || null;
+      archLastQuery = s.dataset.archSearch;
+      archPickedI = null;
       renderQuick();
     }
   });
