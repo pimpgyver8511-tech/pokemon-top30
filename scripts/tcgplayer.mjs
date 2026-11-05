@@ -150,6 +150,23 @@ export async function tcgplayerPrices(set, cards, fx) {
   const matched = out.filter(Boolean).length;
   console.log(`  TCGplayer: Gruppe ${group.groupId} "${group.name}", ${singles.length} Karten mit Preis, ${matched} von ${cards.length} zugeordnet`);
   if (unmatched.length) console.warn(`  TCGplayer ${set.id}: ${unmatched.length} Karten ohne Zuordnung, z. B. ${unmatched.slice(0, 8).join(" | ")}`);
+  // Karten, die nur TCGplayer kennt (z. B. die drei Mew "RGB Rare" im 30-Jahre-Set): zusätzlich liefern
+  // Nur wenn alle bekannten Karten zugeordnet sind, sonst wären es evtl. Doppelte
+  out.extra = (unmatched.length ? [] : singles.filter((x) => !used.has(x.p.productId))).map((x) => {
+    const r = rows.get(x.p.productId).sort((a, b) => {
+      const ia = SUBTYPE_ORDER.indexOf(a.subTypeName), ib = SUBTYPE_ORDER.indexOf(b.subTypeName);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    })[0];
+    const usd = r.marketPrice > 0 ? r.marketPrice : r.lowPrice;
+    return {
+      no: String(x.num).replace(/\/\d+$/, ""),
+      name: String(x.p.name).replace(/\s+-\s+[^-]*$/, ""), tpId: x.p.productId,
+      rarity: x.p.extendedData?.find((d) => d.name === "Rarity")?.value ?? null, img: x.p.imageUrl ?? null,
+      avg30: round(usd / fx.usd), trend: round(usd / fx.usd), low: round(r.lowPrice / fx.usd), avg1: null, avg7: null,
+      variant: null, src: "tcgplayer", usd: round(usd), tpUrl: x.p.url ?? null,
+    };
+  });
+  if (out.extra.length) console.log(`  TCGplayer ${set.id}: ${out.extra.length} zusätzliche Karten nur bei TCGplayer: ${out.extra.slice(0, 6).map((c) => `${c.no} ${c.name}`).join(" | ")}`);
   return out;
 }
 

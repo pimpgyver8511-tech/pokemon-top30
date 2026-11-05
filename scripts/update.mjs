@@ -505,7 +505,7 @@ async function usdRate() {
   return FX;
 }
 
-async function addTcgplayer(built, setInfo) {
+async function addTcgplayer(built, setInfo, deName = (n) => n) {
   const fx = await usdRate();
   const need = built.allCards.filter((c) => !c.hasPrice);
   if (!fx || !need.length) return built;
@@ -515,12 +515,19 @@ async function addTcgplayer(built, setInfo) {
   } catch (err) {
     console.warn(`  TCGplayer nicht erreichbar (${setInfo.id}): ${err.message}`);
   }
-  if (!map?.some(Boolean)) return built;
+  if (!map?.some(Boolean) && !map?.extra?.length) return built;
   need.forEach((c, i) => {
     if (!map[i]) return;
     const { tpName, ...p } = map[i];
     Object.assign(c, p, { hasPrice: true });
   });
+  // Karten, die TCGdex gar nicht kennt (z. B. Mew "RGB Rare" im 30-Jahre-Set), mit aufnehmen
+  for (const x of map.extra ?? []) {
+    const { img, tpId, ...rest } = x;
+    const name = deName(x.name);
+    built.allCards.push({ ...rest, hasPrice: isNum(x.avg30), enName: name !== x.name ? x.name : null, id: `${setInfo.id}-tp${tpId}`,
+      name, thumb: img, large: img, url: cardmarketUrl(null, x.name) });
+  }
   const priced = built.allCards.filter((c) => c.hasPrice);
   built.cards = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
   built.priceSource = priced.every((c) => c.src === "tcgplayer") ? "tcgplayer" : "mixed";
@@ -599,7 +606,7 @@ async function main() {
     }
     if (!built.cards.length) {
       const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`);
-      built = await addTcgplayer(built, { id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate });
+      built = await addTcgplayer(built, { id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate }, makeDeNamer(species));
     }
     allSets.push(built);
     if (built.cards.length) result.push(built);
@@ -615,7 +622,7 @@ async function main() {
   const have = new Set(mainSets.map((st) => st.id));
   for (const id of EXTRA_TOP_SETS.filter((x) => !have.has(x))) {
     let built = await buildFromPtcg(id, makeDeNamer(species));
-    if (built && !built.cards.length) built = await addTcgplayer(built, { id, name: built.name, enName: built.name, releaseDate: built.releaseDate });
+    if (built && !built.cards.length) built = await addTcgplayer(built, { id, name: built.name, enName: built.name, releaseDate: built.releaseDate }, makeDeNamer(species));
     if (!built) built = await buildFromTcgplayer(id, makeDeNamer(species));
     if (built?.cards.length) { result.push(built); allSets.push(built); }
   }
@@ -676,7 +683,7 @@ async function main() {
         if (fb?.size) b = await buildSet(st, fb);
         if (!b.allCards.some((c) => c.hasPrice)) {
           const en = await getJson(`${API}/en/sets/${encodeURIComponent(st.id)}`).catch(() => null);
-          b = await addTcgplayer(b, { id: st.id, name: st.name, enName: en?.name ?? st.name, releaseDate: st.releaseDate });
+          b = await addTcgplayer(b, { id: st.id, name: st.name, enName: en?.name ?? st.name, releaseDate: st.releaseDate }, makeDeNamer(species));
         }
       }
       builtOld.push(b);
