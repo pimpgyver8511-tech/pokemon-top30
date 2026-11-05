@@ -125,6 +125,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
 .qwarn.warn-dup { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
+.link-btn { font: inherit; padding: 0; border: 0; background: none; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .own-tag { display: inline-block; font-size: .62rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; background: var(--ink); color: var(--bg); vertical-align: 2px; }
 .col-edit select { font: inherit; font-size: .9rem; padding: 5px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; box-sizing: border-box; }
 .col-edit .col-cond { grid-column: span 2; }
@@ -2152,7 +2153,9 @@ async function renderCollection() {
   // Ranking: wertvollste Karten nach Ø 30 Tage pro Stück, absteigend
   const ranked = entries.filter((e) => colVal(e) != null).sort((a, b) => colVal(b) - colVal(a));
   const rankBox = document.getElementById("col-rank");
-  rankBox.hidden = !ranked.length;
+  // Karten mit unsicherem Preis ohne eigenen Wert: nicht im Ranking, aber hier genannt
+  const unranked = entries.filter((e) => colVal(e) == null && archCurrent(e.card)?._dup);
+  rankBox.hidden = !ranked.length && !unranked.length;
   const RANK_N = colRankAll ? ranked.length : 10;
   rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage bzw. eigener Wert, pro Stück</small></h3>
     <ol class="col-rank">${ranked.slice(0, RANK_N).map((e, i) => {
@@ -2160,6 +2163,7 @@ async function renderCollection() {
       return `<li><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}</small></span><b>${fmtPrice(v)}${e.own != null ? ' <span class="own-tag" title="Eigener Wert">eigen</span>' : isTp(cur) ? " " + usTag : warnTag(priceWarn(cur))}</b></li>`;
     }).join("")}</ol>
     ${ranked.length > 10 ? `<button type="button" class="arch-btn" data-col-rank-all>${colRankAll ? "Nur Top 10" : `Alle ${ranked.length} anzeigen`}</button>` : ""}` : "";
+  if (unranked.length) rankBox.innerHTML += `<div class="qwarn warn-dup">⚠ Nicht im Ranking, weil der Cardmarket-Preis unsicher ist: ${unranked.map((e) => `<button type="button" class="link-btn" data-col-jump="${e.id}">${esc(e.card.n)} (${esc(e.card.set)} Nr. ${esc(e.card.no)})</button>`).join(", ")}. Bei der Karte „Eigener Wert“ eintragen, dann erscheint sie hier.</div>`;
   const stand = quickData?.updated ? `Preise vom ${fmtDate(quickData.updated)}` : "";
   document.getElementById("col-meta").textContent = !all.length ? ""
     : `${qs ? `${entries.length} von ${all.length} Einträgen` : `${pieces} Karte${pieces === 1 ? "" : "n"}`}${stand ? " · " + stand : ""}`;
@@ -2194,7 +2198,7 @@ async function renderCollection() {
     const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
     const buyTxt = e.buy != null ? e.buy.toFixed(2).replace(".", ",") : "";
     const isTop = PERIODS.some(([k]) => top[k]?.[0] === e);
-    return `<article class="arch-item col-item${isTop ? " col-star" : ""}">${pic}
+    return `<article class="arch-item col-item${isTop ? " col-star" : ""}" id="col-e-${e.id}">${pic}
       <div class="qbody">
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}</div>
         <div class="qmeta">${set}</div>
@@ -2325,6 +2329,12 @@ function colInit() {
   });
   document.getElementById("col-rank").addEventListener("click", (ev) => {
     if (ev.target.closest("[data-col-rank-all]")) { colRankAll = !colRankAll; renderCollection(); }
+    const j = ev.target.closest("[data-col-jump]");
+    if (j) {
+      const el = document.getElementById(`col-e-${j.dataset.colJump}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.querySelector('[data-col-f="own"]')?.focus({ preventScroll: true });
+    }
   });
   document.getElementById("col-perf").addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-col-sort]");
