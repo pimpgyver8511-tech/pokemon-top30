@@ -664,7 +664,9 @@ function render() {
     out.push(`<section class="set" id="set-${esc(s.id)}">
       <div class="set-head"><h2>${esc(s.name)}</h2>
         <span class="set-meta">${s.serie ? esc(s.serie) + " · " : ""}erschienen ${fmtDate(s.releaseDate)}</span></div>
-      ${s.priceSource ? `<p class="tp-note">${usTag} Noch keine Cardmarket-Preise: ${s.priceSource === "mixed" ? "einige " : ""}Preise sind TCGplayer-Marktpreise aus den USA, ${fxNote(s.fx ?? data.fx)}. Spalte Ø 7 Tage bleibt dann leer. Sobald Cardmarket Preise hat, werden diese automatisch genommen.</p>` : ""}
+      ${s.priceSource ? `<p class="tp-note">${usTag} ${s.priceSource === "mixed"
+        ? `Einige Karten haben noch keinen Cardmarket-Preis. Bei diesen (mit „US“ markiert) steht der TCGplayer-Marktpreis aus den USA, ${fxNote(s.fx ?? data.fx)}, ohne Ø 7 Tage.`
+        : `Noch keine Cardmarket-Preise: Die Preise sind TCGplayer-Marktpreise aus den USA, ${fxNote(s.fx ?? data.fx)}. Spalte Ø 7 Tage bleibt dann leer.`} Sobald Cardmarket Preise hat, werden diese automatisch genommen.</p>` : ""}
       <div class="table-scroll"><table>${tableHead(true)}<tbody>${cards.map(([c, i]) => cardRow(c, i)).join("")}</tbody></table></div>
     </section>`);
   }
