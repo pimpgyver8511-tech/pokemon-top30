@@ -261,6 +261,14 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 b.up { color: var(--up); } b.down { color: var(--down); } b.flat { color: var(--ink); }
 .col-star { border-color: var(--foil); box-shadow: inset 4px 0 0 var(--foil); }
 .col-top { display: grid; gap: 4px; margin-bottom: 10px; }
+#collection > * { min-width: 0; }
+.col-rank { margin: 0 0 8px; padding: 0; list-style: none; display: grid; gap: 6px; font-variant-numeric: tabular-nums; }
+.col-rank li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; }
+.col-rank-i { font-weight: 800; color: var(--muted); text-align: right; }
+.col-rank li:nth-child(-n+3) .col-rank-i { color: var(--ink); }
+.col-rank-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.col-rank-n small { display: block; font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-rank b { text-align: right; white-space: nowrap; }
 .col-top-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; column-gap: 8px; align-items: baseline; font-size: .9rem; }
 .col-top-row small { grid-column: 2 / -1; font-size: .75rem; }
 .col-top-k { font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -433,6 +441,7 @@ html { scroll-behavior: smooth; }
         placeholder="Sammlung durchsuchen, z. B. Glurak japanisch" aria-label="Sammlung durchsuchen" hidden>
       <div id="col-total" class="arch-total" hidden></div>
       <div id="col-chart" class="col-chart" hidden></div>
+      <div id="col-rank" class="col-chart" hidden></div>
       <div id="col-perf" class="col-chart" hidden></div>
       <p class="quick-hint">Karten im Archiv oder in der Schnellsuche mit „+ Sammlung“ hinzufügen. Der Wert richtet sich nach Cardmarket (Ø 30 Tage) und wird jeden Morgen neu berechnet. Gespeichert nur auf diesem Gerät, deshalb ab und zu eine Sicherung speichern (enthält auch das Archiv).</p>
       <div class="arch-actions">
@@ -2024,6 +2033,7 @@ async function colSnapshot(total, paid, n, entries) {
 // noch nicht so weit zurück, wird gegen den ältesten bekannten Preis gerechnet ("seit …").
 const PERIODS = [["tag", "Tag", 1], ["woche", "Woche", 7], ["monat", "Monat", 30], ["jahr", "Jahr", 365]];
 let colSort = "";
+let colRankAll = false;
 const dayMinus = (d, n) => new Date(Date.parse(d + "T00:00:00Z") - n * 86400000).toISOString().slice(0, 10);
 const fmtDay = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
 
@@ -2093,9 +2103,22 @@ async function renderCollection() {
       return t ? `<div class="col-top-row"><span class="col-top-k">${label}</span><span class="col-top-n">${esc(t[0].card.n)}</span><b class="up">+${t[1].p.toFixed(1).replace(".", ",")} %</b><small>+${fmtPrice(t[1].eur)}${t[1].full ? "" : ` · seit ${fmtDay(t[1].since)} (Verlauf noch kürzer)`}</small></div>`
         : `<div class="col-top-row"><span class="col-top-k">${label}</span><span class="col-top-n muted">noch keine Karte im Plus${hist.length < 2 ? " (Verlauf beginnt gerade)" : ""}</span></div>`;
     }).join("")}</div>
-    <div class="grade-chips col-sort" role="group" aria-label="Sortieren"><span class="col-sort-l">Sortieren:</span>${[["", "Neueste"], ...PERIODS]
+    <div class="grade-chips col-sort" role="group" aria-label="Sortieren"><span class="col-sort-l">Sortieren:</span>${[["", "Neueste"], ["wert", "Wert"], ...PERIODS]
       .map(([k, l]) => `<button type="button" data-col-sort="${k}" aria-pressed="${k === colSort}">${l}</button>`).join("")}</div>` : "";
-  if (colSort) entries.sort((a, b) => (perf.get(b.id)[colSort]?.p ?? -Infinity) - (perf.get(a.id)[colSort]?.p ?? -Infinity));
+  if (colSort === "wert") entries.sort((a, b) => (colNow(b) ?? -1) - (colNow(a) ?? -1));
+  else if (colSort) entries.sort((a, b) => (perf.get(b.id)[colSort]?.p ?? -Infinity) - (perf.get(a.id)[colSort]?.p ?? -Infinity));
+
+  // Ranking: wertvollste Karten nach Ø 30 Tage pro Stück, absteigend
+  const ranked = entries.filter((e) => colNow(e) != null).sort((a, b) => colNow(b) - colNow(a));
+  const rankBox = document.getElementById("col-rank");
+  rankBox.hidden = !ranked.length;
+  const RANK_N = colRankAll ? ranked.length : 10;
+  rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage pro Stück</small></h3>
+    <ol class="col-rank">${ranked.slice(0, RANK_N).map((e, i) => {
+      const c = e.card, cur = archCurrent(c), v = colNow(e), q = e.qty || 1;
+      return `<li><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}</small></span><b>${fmtPrice(v)}${isTp(cur) ? " " + usTag : ""}</b></li>`;
+    }).join("")}</ol>
+    ${ranked.length > 10 ? `<button type="button" class="arch-btn" data-col-rank-all>${colRankAll ? "Nur Top 10" : `Alle ${ranked.length} anzeigen`}</button>` : ""}` : "";
   const stand = quickData?.updated ? `Preise vom ${fmtDate(quickData.updated)}` : "";
   document.getElementById("col-meta").textContent = !all.length ? ""
     : `${qs ? `${entries.length} von ${all.length} Einträgen` : `${pieces} Karte${pieces === 1 ? "" : "n"}`}${stand ? " · " + stand : ""}`;
@@ -2249,6 +2272,9 @@ function colInit() {
     if (ev.target.closest("[data-col-del-no]")) { colDelAsk = null; return renderCollection(); }
     const del = ev.target.closest("[data-col-del]");
     if (del) { await colDel(Number(del.dataset.colDel)); colDelAsk = null; renderCollection(); }
+  });
+  document.getElementById("col-rank").addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-col-rank-all]")) { colRankAll = !colRankAll; renderCollection(); }
   });
   document.getElementById("col-perf").addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-col-sort]");

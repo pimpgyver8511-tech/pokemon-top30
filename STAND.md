@@ -49,6 +49,7 @@ Zuletzt aktualisiert: 05.11.2026
 ## Erledigt am 05.11.2026
 
 - TCGplayer-Ersatzpreise (in € umgerechnet) für Sets ohne Cardmarket-Preise
+- Sammlung: Ranking „Wertvollste Karten“ (Top 10, alle aufklappbar, Ø 30 Tage pro Stück) und Sortierung „Wert“
 
 - Sammlung: Performance Tag/Woche/Monat/Jahr, „Beste Performer“, ★-Markierung, Sortierung
 - „Meine Sammlung“ mit Kaufpreis, Anzahl, Grad, Gewinn/Verlust, Wertverlauf und Sicherung; Reiter am Handy in zwei Reihen (3 × 2)
