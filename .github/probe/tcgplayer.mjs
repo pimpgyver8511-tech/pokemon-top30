@@ -10,6 +10,7 @@ const CATEGORY = 3; // Pokémon (englisch)
 const GROUP_OVERRIDE = { "30th": 24722, "30th-c": 24837, cel25c: 2931 };
 
 const fold = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/♀/g, " f").replace(/♂/g, " m").replace(/★/g, " star").replace(/δ/g, " delta").replace(/&/g, " and ")
   .replace(/_+/g, "_").replace(/[-'’.:,!?]/g, " ").replace(/\s+/g, " ").trim();
 const normNo = (no) => String(no ?? "").replace(/^0+(?=\w)/, "").toUpperCase();
 const round = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
@@ -79,7 +80,7 @@ const SUBTYPE_ORDER = ["Normal", "Holofoil", "1st Edition Holofoil", "1st Editio
  * Liefert für die Karten eines Sets TCGplayer-Preise in Euro.
  * set:   { id, name, enName, releaseDate }
  * cards: [{ no, name }]  (name möglichst englisch)
- * Rückgabe: Map normNo(no) -> { avg30, trend, low, variant, src, usd, tpUrl } oder null
+ * Rückgabe: Array passend zu cards (je Karte { avg30, trend, low, variant, src, usd, tpUrl } oder null), oder null
  */
 export async function tcgplayerPrices(set, cards, fx) {
   const group = await findGroup(set);
@@ -103,28 +104,51 @@ export async function tcgplayerPrices(set, cards, fx) {
     const nm = cleanName(x.p.name);
     (byName.get(nm) ?? byName.set(nm, []).get(nm)).push(x);
   }
-  const out = new Map();
-  const unmatched = [];
-  for (const c of cards) {
+  // 1. Nummer + Name, sonst eindeutiger Name
+  const res = cards.map(() => null);
+  const used = new Set();
+  cards.forEach((c, i) => {
     let hit = (byNo.get(normNo(c.no)) ?? []).filter((x) => sameName(x.p.name, c.name));
     if (hit.length !== 1) {
       const named = byName.get(cleanName(c.name)) ?? [];
-      hit = named.length === 1 ? named : hit.length > 1 ? [] : [];
+      hit = named.length === 1 ? named : [];
     }
-    if (hit.length !== 1) { unmatched.push(`${c.no} ${c.name}`); continue; }
-    const x = hit[0];
+    if (hit.length === 1 && !used.has(hit[0].p.productId)) { res[i] = hit[0]; used.add(hit[0].p.productId); }
+  });
+  // 2. Gleichnamige Karten (z. B. zweiteilige LEGEND-Karten): in Nummernfolge paaren
+  const left = () => cards.map((c, i) => [c, i]).filter(([, i]) => !res[i]);
+  const sameNamed = new Map();
+  for (const [c, i] of left()) { const k = cleanName(c.name); (sameNamed.get(k) ?? sameNamed.set(k, []).get(k)).push(i); }
+  const numOf = (v) => parseInt(String(v).replace(/\D+/g, ""), 10) || 0;
+  for (const [k, idx] of sameNamed) {
+    const tp = (byName.get(k) ?? []).filter((x) => !used.has(x.p.productId));
+    if (idx.length < 2 || tp.length !== idx.length) continue;
+    idx.sort((a, b) => numOf(cards[a].no) - numOf(cards[b].no));
+    tp.sort((a, b) => numOf(a.num) - numOf(b.num));
+    idx.forEach((i, j) => { res[i] = tp[j]; used.add(tp[j].p.productId); });
+  }
+  // 3. Rest: Name steckt in genau einem noch freien TCGplayer-Namen (z. B. "Palkia" -> "Palkia G LV.X")
+  for (const [c, i] of left()) {
+    const want = cleanName(c.name).split(" ");
+    const cand = singles.filter((x) => !used.has(x.p.productId) && want.every((t) => cleanName(x.p.name).split(" ").includes(t)));
+    if (cand.length === 1) { res[i] = cand[0]; used.add(cand[0].p.productId); }
+  }
+  const unmatched = [];
+  const out = res.map((x, i) => {
+    if (!x) { unmatched.push(`${cards[i].no} ${cards[i].name}`); return null; }
     const r = rows.get(x.p.productId).sort((a, b) => {
       const ia = SUBTYPE_ORDER.indexOf(a.subTypeName), ib = SUBTYPE_ORDER.indexOf(b.subTypeName);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     })[0];
     const usd = r.marketPrice > 0 ? r.marketPrice : r.lowPrice;
-    out.set(normNo(c.no), {
+    return {
       avg30: round(usd / fx.usd), trend: round(usd / fx.usd), low: round(r.lowPrice / fx.usd),
       avg1: null, avg7: null, variant: r.subTypeName === "Reverse Holofoil" ? "Reverse Holo" : null,
-      src: "tcgplayer", usd: round(usd), tpUrl: x.p.url ?? null,
-    });
-  }
-  console.log(`  TCGplayer: Gruppe ${group.groupId} "${group.name}", ${singles.length} Karten mit Preis, ${out.size} von ${cards.length} zugeordnet`);
+      src: "tcgplayer", usd: round(usd), tpUrl: x.p.url ?? null, tpName: x.p.name,
+    };
+  });
+  const matched = out.filter(Boolean).length;
+  console.log(`  TCGplayer: Gruppe ${group.groupId} "${group.name}", ${singles.length} Karten mit Preis, ${matched} von ${cards.length} zugeordnet`);
   if (unmatched.length) console.warn(`  TCGplayer ${set.id}: ${unmatched.length} Karten ohne Zuordnung, z. B. ${unmatched.slice(0, 8).join(" | ")}`);
   return out;
 }
