@@ -121,6 +121,13 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .chip.up { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
 .chip.down { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
 .chip.flat { color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.warn-tag { display: inline-block; margin-left: 4px; font-size: .66rem; font-weight: 800; padding: 1px 5px; border-radius: 3px; white-space: nowrap; vertical-align: 2px; background: color-mix(in srgb, var(--foil) 35%, var(--surface)); color: var(--ink); cursor: help; }
+.warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
+.qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
+.qwarn.warn-dup { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
+.own-tag { display: inline-block; font-size: .62rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; background: var(--ink); color: var(--bg); vertical-align: 2px; }
+.col-edit select { font: inherit; font-size: .9rem; padding: 5px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; box-sizing: border-box; }
+.col-edit .col-cond { grid-column: span 2; }
 .us-tag { display: inline-block; font-size: .62rem; font-weight: 800; letter-spacing: .04em; padding: 1px 4px; border-radius: 3px; background: var(--accent); color: var(--surface); vertical-align: 2px; }
 .tp-note { margin: 0 0 10px; font-size: .85rem; color: var(--muted); }
 .cm-link {
@@ -526,7 +533,7 @@ function cardRow(c, i, setName) {
     <td class="img">${img}</td>
     <td><div class="card-name">${esc(c.name)}</div><div class="card-sub">${sub}</div></td>
     <td class="num">${fmtPrice(c.avg7)}</td>
-    <td class="num price30">${fmtPrice(c.avg30)}${isTp(c) ? " " + usTag : ""}</td>
+    <td class="num price30">${fmtPrice(c.avg30)}${isTp(c) ? " " + usTag : ""}${warnTag(priceWarn(c))}</td>
     <td class="num">${chip(trend)}</td>
     ${weekAgo ? `<td class="num hide-sm">${chip(hist)}</td>` : ""}
     <td>${isTp(c) && c.tpUrl
@@ -690,7 +697,39 @@ const groupOf = (c) => (c.L ? (c.L.startsWith("zh") ? "zh" : c.L) : "intl");
 
 function indexCards(cards) {
   for (const c of cards) c._hay = fold(`${c.n} ${c.e ?? ""}`);
+  markShared(cards, (c) => c.s, (c) => c.u);
 }
+
+// Zwei Karten eines Sets mit demselben Cardmarket-Produkt (Fehler in der Datenquelle,
+// meist Holo und normale Version): Preis gilt nur für eine davon -> "unsicher"
+function markShared(cards, setOf, urlOf) {
+  const seen = new Map();
+  for (const c of cards) {
+    const id = /idProduct=(\d+)/.exec(urlOf(c) ?? "")?.[1];
+    if (!id) continue;
+    const k = `${setOf(c)}|${id}`;
+    const first = seen.get(k);
+    if (first) { first._dup = true; c._dup = true; } else seen.set(k, c);
+  }
+}
+
+// Warnung zum Preis einer Karte (Suchdaten: a7/a30, Set-Tabellen: avg7/avg30)
+function priceWarn(c) {
+  if (!c) return null;
+  if (c._dup) return { k: "dup", tag: "unsicher", t: "Preis unsicher: Die Datenquelle führt diese und eine zweite Karte des Sets (meist Holo und normale Version) unter demselben Cardmarket-Produkt. Der Preis gilt vermutlich nur für eine davon. In der Sammlung zählt die Karte erst mit eigenem Wert." };
+  const a7 = c.a7 ?? c.avg7, a30 = c.a30 ?? c.avg30;
+  if (a7 && a30 && Math.max(a7, a30) >= 5 && Math.max(a7, a30) / Math.min(a7, a30) >= 1.6) {
+    return { k: "swing", tag: "schwankt", t: `Preis schwankt stark: Ø 7 Tage ${fmtPrice(a7)}, Ø 30 Tage ${fmtPrice(a30)}. Einzelne Verkäufe, z. B. von Karten in Top-Zustand, verzerren den Durchschnitt. Am besten auf Cardmarket nach Zustand filtern.` };
+  }
+  return null;
+}
+const warnTag = (w) => (w ? `<span class="warn-tag warn-${w.k}" title="${esc(w.t)}">⚠ ${w.tag}</span>` : "");
+const warnLine = (w) => (w ? `<div class="qwarn warn-${w.k}">⚠ ${esc(w.t)}</div>` : "");
+
+// Zustände wie bei Cardmarket (Zahl = Filterwert im Cardmarket-Link)
+const CONDITIONS = [["", "–"], ["MT", "Mint"], ["NM", "Near Mint"], ["EX", "Excellent"], ["GD", "Good"], ["LP", "Light Played"], ["PL", "Played"], ["PO", "Poor"]];
+const COND_CODE = { MT: 1, NM: 2, EX: 3, GD: 4, LP: 5, PL: 6, PO: 7 };
+const condUrl = (u, cond) => (cond && COND_CODE[cond] && /idProduct=/.test(u ?? "") ? `${u}&minCondition=${COND_CODE[cond]}` : u);
 
 // Datenstand vom Server (kleine Datei, nie zwischengespeichert). Damit erkennt der Handy-Speicher
 // neue Tagespreise sofort, statt erst beim übernächsten Öffnen.
@@ -897,7 +936,7 @@ function renderQuick() {
       ? `<div class="qprices">
           ${priceCell("Ø 1 Tag", c.a1)}${priceCell("Ø 7 Tage", c.a7, true)}${priceCell("Ø 30 Tage", c.a30, true)}
           ${priceCell("Trend", c.t)}${priceCell("Ab", c.lo)}
-        </div>`
+        </div>${warnLine(priceWarn(c))}`
       : '<div class="qnone">Noch kein Cardmarket-Preis für diese Karte.</div>';
     return `<article class="qcard">${img}
       <div class="qbody">
@@ -1753,7 +1792,7 @@ async function renderArchive() {
         <div class="qmeta">${archWhen(e)}${recDesc ? ` · erkannt: ${recDesc}` : ""}</div>
         <div class="qprices">
           ${priceCell("Ø 30 beim Scan", then30)}${priceCell(isTp(now) ? "US-Preis heute (€)" : "Ø 30 heute", now30, true)}${priceCell("Ø 7 heute", now?.a7 ?? null)}
-        </div>
+        </div>${warnLine(priceWarn(now))}
         <div class="qfoot">${then30 && now30 ? chip(pct(now30, then30)) : ""}
           ${colArch.has(e.id) ? '<button type="button" class="arch-btn col-in" data-col-go>✓ In Sammlung</button>' : `<button type="button" class="arch-btn" data-col-arch="${e.id}">+ Sammlung</button>`}
           <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}">Suchen</button>
@@ -2018,7 +2057,8 @@ function colBtn(c) {
 }
 
 const colNum = (v) => { const n = Number(String(v ?? "").replace(/[€\s]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".")); return v === "" || v == null || !Number.isFinite(n) ? null : n; };
-const colNow = (e) => archCurrent(e.card)?.a30 ?? null;
+const colNow = (e) => archCurrent(e.card)?.a30 ?? null;            // Marktpreis (für Verlauf und Performance)
+const colVal = (e) => (e.own != null ? e.own : archCurrent(e.card)?._dup ? null : colNow(e)); // zählt für Wert, Ranking, Gewinn
 
 // Sammlungswert und Preis jeder Karte einmal pro Preistag merken (Verlaufskurve und Performance)
 async function colSnapshot(total, paid, n, entries) {
@@ -2076,11 +2116,12 @@ async function renderCollection() {
   const entries = qs ? all.filter((e) => archMatch(e, parseQuery(qs))) : [...all];
 
   // Werte: Ø 30 Tage heute × Anzahl; Gewinn nur für Karten mit Kaufpreis
-  let total = 0, missing = 0, paid = 0, paidNow = 0, paidCount = 0, pieces = 0;
+  let total = 0, missing = 0, unsure = 0, own = 0, paid = 0, paidNow = 0, paidCount = 0, pieces = 0;
   for (const e of entries) {
-    const q = e.qty || 1, now = colNow(e);
+    const q = e.qty || 1, now = colVal(e);
     pieces += q;
-    if (now != null) total += now * q; else missing++;
+    if (e.own != null) own++;
+    if (now != null) total += now * q; else if (archCurrent(e.card)?._dup && colNow(e) != null) unsure++; else missing++;
     if (e.buy != null && now != null) { paid += e.buy * q; paidNow += now * q; paidCount++; }
   }
   if (!qs && all.length) await colSnapshot(total, paidCount ? paid : null, pieces, all);
@@ -2105,18 +2146,18 @@ async function renderCollection() {
     }).join("")}</div>
     <div class="grade-chips col-sort" role="group" aria-label="Sortieren"><span class="col-sort-l">Sortieren:</span>${[["", "Neueste"], ["wert", "Wert"], ...PERIODS]
       .map(([k, l]) => `<button type="button" data-col-sort="${k}" aria-pressed="${k === colSort}">${l}</button>`).join("")}</div>` : "";
-  if (colSort === "wert") entries.sort((a, b) => (colNow(b) ?? -1) - (colNow(a) ?? -1));
+  if (colSort === "wert") entries.sort((a, b) => (colVal(b) ?? -1) - (colVal(a) ?? -1));
   else if (colSort) entries.sort((a, b) => (perf.get(b.id)[colSort]?.p ?? -Infinity) - (perf.get(a.id)[colSort]?.p ?? -Infinity));
 
   // Ranking: wertvollste Karten nach Ø 30 Tage pro Stück, absteigend
-  const ranked = entries.filter((e) => colNow(e) != null).sort((a, b) => colNow(b) - colNow(a));
+  const ranked = entries.filter((e) => colVal(e) != null).sort((a, b) => colVal(b) - colVal(a));
   const rankBox = document.getElementById("col-rank");
   rankBox.hidden = !ranked.length;
   const RANK_N = colRankAll ? ranked.length : 10;
-  rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage pro Stück</small></h3>
+  rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage bzw. eigener Wert, pro Stück</small></h3>
     <ol class="col-rank">${ranked.slice(0, RANK_N).map((e, i) => {
-      const c = e.card, cur = archCurrent(c), v = colNow(e), q = e.qty || 1;
-      return `<li><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}</small></span><b>${fmtPrice(v)}${isTp(cur) ? " " + usTag : ""}</b></li>`;
+      const c = e.card, cur = archCurrent(c), v = colVal(e), q = e.qty || 1;
+      return `<li><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}</small></span><b>${fmtPrice(v)}${e.own != null ? ' <span class="own-tag" title="Eigener Wert">eigen</span>' : isTp(cur) ? " " + usTag : warnTag(priceWarn(cur))}</b></li>`;
     }).join("")}</ol>
     ${ranked.length > 10 ? `<button type="button" class="arch-btn" data-col-rank-all>${colRankAll ? "Nur Top 10" : `Alle ${ranked.length} anzeigen`}</button>` : ""}` : "";
   const stand = quickData?.updated ? `Preise vom ${fmtDate(quickData.updated)}` : "";
@@ -2126,13 +2167,15 @@ async function renderCollection() {
   tot.hidden = !entries.length;
   const diff = paidNow - paid;
   tot.innerHTML = entries.length ? `
-    <div class="arch-total-main"><span>${qs ? "Wert der Treffer" : "Wert der Sammlung"} (Ø 30 Tage)</span><b>${fmtPrice(total)}</b></div>
+    <div class="arch-total-main"><span>${qs ? "Wert der Treffer" : "Wert der Sammlung"} (Ø 30 Tage${own ? " / eigener Wert" : ""})</span><b>${fmtPrice(total)}</b></div>
     <div class="arch-total-side">
       <div><span>Bezahlt</span><b>${paidCount ? fmtPrice(paid) : "–"}</b></div>
       <div><span>Gewinn / Verlust</span>${paidCount ? `<b>${diff >= 0 ? "+" : "−"}${fmtPrice(Math.abs(diff))}</b> ${chip(pct(paidNow, paid))}` : "<b>–</b>"}</div>
     </div>
     ${[
       missing ? `${missing} Karte${missing === 1 ? "" : "n"} ohne aktuellen Preis nicht mitgezählt${loading ? " (ältere Karten werden noch geladen)" : ""}.` : "",
+      unsure ? `${unsure} Karte${unsure === 1 ? "" : "n"} mit unsicherem Preis nicht mitgezählt. Eigenen Wert eintragen, dann zählt sie mit.` : "",
+      own ? `${own} Karte${own === 1 ? "" : "n"} mit eigenem Wert.` : "",
       paidCount && paidCount < entries.length ? `Gewinn nur für ${paidCount} von ${entries.length} Einträgen mit Kaufpreis.` : "",
     ].filter(Boolean).map((t) => `<p class="quick-hint">${t}</p>`).join("")}` : "";
   document.getElementById("col-csv").disabled = !all.length;
@@ -2144,8 +2187,9 @@ async function renderCollection() {
   }
   if (!entries.length) { box.innerHTML = '<div class="status">Keine Karte in der Sammlung passt zur Suche.</div>'; return; }
   box.innerHTML = entries.map((e) => {
-    const c = e.card, cur = archCurrent(c), q = e.qty || 1, now = cur?.a30 ?? null;
+    const c = e.card, cur = archCurrent(c), q = e.qty || 1, now = cur?.a30 ?? null, val = colVal(e);
     const img = e.thumb || c.img;
+    const ownTxt = e.own != null ? e.own.toFixed(2).replace(".", ",") : "";
     const pic = img ? `<img class="arch-thumb" loading="lazy" src="${esc(img)}" alt="${esc(c.n)}">` : '<span class="arch-thumb no-img">?</span>';
     const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
     const buyTxt = e.buy != null ? e.buy.toFixed(2).replace(".", ",") : "";
@@ -2155,8 +2199,10 @@ async function renderCollection() {
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}</div>
         <div class="qmeta">${set}</div>
         <div class="qprices">
-          ${priceCell(isTp(cur) ? "US-Preis heute (€)" : "Ø 30 heute", now, true)}${priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, now != null ? now * q : null) : ""}${e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
+          ${e.own != null ? priceCell("Eigener Wert / Stück", e.own, true) : ""}${priceCell(isTp(cur) ? "US-Preis heute (€)" : "Ø 30 heute", now, e.own == null)}${priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, val != null ? val * q : null) : ""}${e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
         </div>
+        ${e.cond ? `<div class="qmeta">Zustand: <b>${esc(CONDITIONS.find(([k]) => k === e.cond)?.[1] ?? e.cond)}</b>. Der Cardmarket-Durchschnitt mischt alle Zustände${e.own == null ? " – für deinen Zustand am besten auf Cardmarket nachsehen und als eigenen Wert eintragen" : ""}.</div>` : ""}
+        ${e.own != null && priceWarn(cur) ? `<div class="qwarn warn-${priceWarn(cur).k}">⚠ Cardmarket-Preis ${priceWarn(cur).k === "dup" ? "unsicher" : "schwankt stark"}, es zählt dein eigener Wert.</div>` : warnLine(priceWarn(cur))}
         <div class="col-perfrow">${PERIODS.map(([k, label]) => perfCell(k, label, perf.get(e.id)[k], top[k]?.[0] === e)).join("")}</div>
         ${isTp(cur) ? `<div class="qmeta">${usTag} Noch kein Cardmarket-Preis: TCGplayer-Marktpreis (USA), ${fxNote(quickData.fx)}.</div>` : ""}
         ${e.grade ? '<div class="qmeta">Der Preis gilt für ungegradete Karten.</div>' : ""}
@@ -2164,9 +2210,11 @@ async function renderCollection() {
           <label>Anzahl<input type="number" min="1" step="1" inputmode="numeric" value="${q}" data-col-f="qty" data-col-id="${e.id}"></label>
           <label>Bezahlt € / St.<input type="text" inputmode="decimal" placeholder="–" value="${esc(buyTxt)}" data-col-f="buy" data-col-id="${e.id}"></label>
           <label>Grad<input type="text" list="col-grades" placeholder="ohne" value="${esc(e.grade ?? "")}" data-col-f="grade" data-col-id="${e.id}"></label>
+          <label class="col-cond">Zustand<select data-col-f="cond" data-col-id="${e.id}">${CONDITIONS.map(([k, l]) => `<option value="${k}"${(e.cond ?? "") === k ? " selected" : ""}>${k ? `${k} · ${l}` : l}</option>`).join("")}</select></label>
+          <label class="col-own">Eigener Wert € / St.<input type="text" inputmode="decimal" placeholder="Ø 30 Tage" value="${esc(ownTxt)}" data-col-f="own" data-col-id="${e.id}"></label>
         </div>
-        <div class="qfoot">${e.buy != null && now != null ? chip(pct(now, e.buy)) : ""}
-          <a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>
+        <div class="qfoot">${e.buy != null && val != null ? chip(pct(val, e.buy)) : ""}
+          <a class="cm-link" href="${esc(condUrl(c.u, e.cond))}" target="_blank" rel="noopener">Cardmarket${e.cond && COND_CODE[e.cond] ? ` ab ${e.cond}` : ""} ↗</a>
           ${colDelAsk === e.id
             ? `<button type="button" class="arch-btn col-del-yes" data-col-del="${e.id}">Wirklich entfernen</button><button type="button" class="arch-btn" data-col-del-no>Abbrechen</button>`
             : `<button type="button" class="arch-btn" data-col-ask="${e.id}">Entfernen</button>`}
@@ -2231,11 +2279,11 @@ async function colChart(qs) {
 function colCsv(entries) {
   const num = (v) => (v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","));
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Wert gesamt", "Gewinn / Verlust", "Hinzugefügt", "Cardmarket"];
+  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Zustand", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Eigener Wert / Stück", "Wert gesamt", "Gewinn / Verlust", "Preis-Hinweis", "Hinzugefügt", "Cardmarket"];
   const rows = entries.map((e) => {
-    const c = e.card, cur = archCurrent(c), n = e.qty || 1, now = cur?.a30 ?? null;
-    return [c.n, c.e, c.set, c.no, BADGE[c.L ?? "intl"], c.r === "None" ? "" : c.r, n, e.grade, num(e.buy), num(now), num(cur?.a7 ?? null),
-      num(now != null ? now * n : null), num(now != null && e.buy != null ? (now - e.buy) * n : null), fmtDate(e.at), c.u].map(q).join(";");
+    const c = e.card, cur = archCurrent(c), n = e.qty || 1, now = cur?.a30 ?? null, val = colVal(e);
+    return [c.n, c.e, c.set, c.no, BADGE[c.L ?? "intl"], c.r === "None" ? "" : c.r, n, e.grade, e.cond, num(e.buy), num(now), num(cur?.a7 ?? null), num(e.own),
+      num(val != null ? val * n : null), num(val != null && e.buy != null ? (val - e.buy) * n : null), priceWarn(cur)?.tag ?? "", fmtDate(e.at), c.u].map(q).join(";");
   });
   return "﻿" + [head.map(q).join(";"), ...rows].join("\r\n");
 }
@@ -2263,6 +2311,8 @@ function colInit() {
     if (f.dataset.colF === "qty") e.qty = Math.max(1, Math.round(Number(f.value) || 1));
     if (f.dataset.colF === "buy") e.buy = colNum(f.value);
     if (f.dataset.colF === "grade") e.grade = f.value.trim();
+    if (f.dataset.colF === "cond") e.cond = f.value;
+    if (f.dataset.colF === "own") e.own = colNum(f.value);
     await colPut(e);
     renderCollection();
   });
@@ -2359,7 +2409,7 @@ function renderGrade() {
       return `<article class="grade-row">${img}
         <div class="qbody">
           <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}</div>
-          <div class="qmeta">${esc(set.name)} · Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""} · Rohpreis ${fmtPrice(c.a30 ?? null)}${isTp(c) ? " " + usTag : ""}</div>
+          <div class="qmeta">${esc(set.name)} · Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""} · Rohpreis ${fmtPrice(c.a30 ?? null)}${isTp(c) ? " " + usTag : ""}${warnTag(priceWarn(c))}</div>
           <div class="qfoot">
             <a class="cm-link" href="${esc(pc)}" target="_blank" rel="noopener">PriceCharting ↗</a>
             <a class="cm-link" href="${esc(ebay)}" target="_blank" rel="noopener">eBay verkauft${gradeSel ? " · " + esc(gradeSel) : ""} ↗</a>
@@ -2386,6 +2436,7 @@ async function init() {
     const res = await fetch("data/latest.json", { cache: "no-cache" });
     if (!res.ok) throw new Error();
     data = await res.json();
+    for (const st of data.sets) markShared(st.cards, () => st.id, (c) => c.url);
   } catch {
     document.getElementById("sets").innerHTML = '<div class="status">Noch keine Preise vorhanden. Die erste Aktualisierung läuft automatisch einmal am Tag.</div>';
     document.getElementById("updated").textContent = "Noch keine Daten";
