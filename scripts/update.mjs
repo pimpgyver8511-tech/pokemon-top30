@@ -2,6 +2,7 @@
 // letzten 5 Jahre über die TCGdex-API und schreibt die Top 30 pro Set
 // (sortiert nach 30-Tage-Durchschnitt) nach docs/data/.
 import { loadUsdRate, tcgplayerCards, tcgplayerPrices } from "./tcgplayer.mjs";
+import { cardmarketGuidePrices } from "./cmguide.mjs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -546,6 +547,36 @@ async function addTcgplayer(built, setInfo, deName = (n) => n) {
   return built;
 }
 
+// Sets mit TCGplayer-Ersatzpreisen: wo möglich echte Cardmarket-Preise aus Cardmarkets
+// öffentlicher Tages-Preisliste nehmen (Zuordnung über Namen, siehe cmguide.mjs)
+async function applyCardmarketGuide(builtSets) {
+  const groups = new Map();
+  for (const b of builtSets) if (b.priceSource) (groups.get(b.releaseDate) ?? groups.set(b.releaseDate, []).get(b.releaseDate)).push(b);
+  for (const [date, group] of groups) {
+    const refs = group.flatMap((b) => b.allCards.map((c) => c));
+    let res;
+    try {
+      res = await cardmarketGuidePrices(refs.map((c) => ({ name: c.enName ?? c.name, date, ref: c.src === "tcgplayer" ? c.avg30 : null })));
+    } catch (err) {
+      console.warn(`  Cardmarket-Preisliste nicht erreichbar: ${err.message}`);
+      continue;
+    }
+    refs.forEach((c, i) => {
+      const p = res[i];
+      if (!p) return;
+      delete c.src; delete c.usd; delete c.tpUrl;
+      Object.assign(c, { avg1: p.avg1, avg7: p.avg7, avg30: p.avg30, trend: p.trend, low: p.low, variant: p.variant, url: cardmarketUrl(p.idProduct), hasPrice: isNum(p.avg30) });
+    });
+    for (const b of group) {
+      const priced = b.allCards.filter((c) => c.hasPrice);
+      b.cards = [...priced].sort((x, y) => y.avg30 - x.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
+      const tp = priced.filter((c) => c.src === "tcgplayer").length;
+      if (!tp) { delete b.priceSource; delete b.fx; } else b.priceSource = tp === priced.length ? "tcgplayer" : "mixed";
+      console.log(`  ${b.name}: ${priced.length - tp} Cardmarket-Preise aus der Preisliste, ${tp} weiter TCGplayer`);
+    }
+  }
+}
+
 // Notlösung, wenn pokemontcg.io ausfällt: Set nur aus TCGplayer bauen
 async function buildFromTcgplayer(id, deName) {
   const fx = await usdRate();
@@ -641,6 +672,7 @@ async function main() {
     if (!built) built = await buildFromTcgplayer(id, makeDeNamer(species));
     if (built?.cards.length) { result.push(built); allSets.push(built); }
   }
+  await applyCardmarketGuide(result);
   result.sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""));
   for (const promo of promoSets) {
     const built = await buildSet(promo);
