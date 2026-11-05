@@ -1,6 +1,6 @@
 {
- "updated": "2026-11-05T13:13:47.607Z",
- "seconds": 366,
+ "updated": "2026-11-05T13:20:52.149Z",
+ "seconds": 387,
  "sets": [
   "30th-c",
   "30th",
@@ -40,7 +40,6 @@
   "30 Jahre: Klassische Sammlung (30th-c): keine Preise bei TCGdex – versuche pokemontcg.io",
   "  pokemontcg.io: kein Set \"30th Classic Collection\" gefunden",
   "30 Jahre (30th): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%2230th%20Celebration%22: HTTP 502",
   "Celebrations: Classic Collection (cel25c): 25 Karten bei pokemontcg.io, aber keine mit Cardmarket-Ø30. Beispiele: Charizard 4: null | Blastoise 2: null",
   "Verborgenes Schicksal Glitzer-Tresor (sma): keine Preise bei TCGdex – versuche pokemontcg.io",
   "XY trainer Kit (Suicune) (tk-xy-su): keine Preise bei TCGdex – versuche pokemontcg.io",
