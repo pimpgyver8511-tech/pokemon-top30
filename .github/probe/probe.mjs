@@ -1,27 +1,26 @@
-// Einmaliger Test: TCGplayer-Daten (tcgcsv.com) und EZB-Kurs erreichbar? Wird danach wieder gelöscht.
-const get = async (u, type = "json") => { const r = await fetch(u, { headers: { "user-agent": "pokemon-top30-probe" } }); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return type === "json" ? r.json() : r.text(); };
-try {
-  const ecb = await get("https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml", "text");
-  console.log("ECB:", /time='([^']+)'/.exec(ecb)?.[1], /currency='USD' rate='([^']+)'/.exec(ecb)?.[1]);
-} catch (e) { console.log("ECB FAIL", e.message); }
-for (const cat of [3, 85]) {
-  try {
-    const g = await get(`https://tcgcsv.com/tcgplayer/${cat}/groups`);
-    const groups = g.results ?? g;
-    console.log(`cat ${cat}: ${groups.length} groups; newest:`, groups.sort((a, b) => (b.publishedOn ?? "").localeCompare(a.publishedOn ?? "")).slice(0, 12).map((x) => `${x.groupId}|${x.name}|${x.abbreviation}|${x.publishedOn?.slice(0, 10)}`).join(" ;; "));
-    const hits = groups.filter((x) => /30th|30 th|anniversary|celebration|classic|ascended|mega/i.test(x.name));
-    console.log(`cat ${cat} hits:`, hits.map((x) => `${x.groupId}|${x.name}|${x.publishedOn?.slice(0, 10)}`).join(" ;; "));
-    for (const h of hits.filter((x) => /30th|anniversary|classic collection/i.test(x.name)).slice(0, 4)) {
-      const prods = (await get(`https://tcgcsv.com/tcgplayer/${cat}/${h.groupId}/products`)).results;
-      const prices = (await get(`https://tcgcsv.com/tcgplayer/${cat}/${h.groupId}/prices`)).results;
-      const withP = prices.filter((p) => p.marketPrice || p.midPrice);
-      console.log(`  ${h.name}: products ${prods.length}, price rows ${prices.length}, with price ${withP.length}`);
-      const byId = new Map(prods.map((p) => [p.productId, p]));
-      for (const p of withP.sort((a, b) => (b.marketPrice ?? 0) - (a.marketPrice ?? 0)).slice(0, 6)) {
-        const pr = byId.get(p.productId);
-        console.log(`    ${pr?.name} | ${JSON.stringify(pr?.extendedData?.filter((d) => ["Number", "Rarity"].includes(d.name)).map((d) => d.value))} | ${p.subTypeName} | market ${p.marketPrice} low ${p.lowPrice} mid ${p.midPrice}`);
-      }
-      console.log("    sample product keys:", Object.keys(prods[0] ?? {}).join(","));
-    }
-  } catch (e) { console.log(`cat ${cat} FAIL`, e.message); }
+// Einmaliger Test der TCGplayer-Zuordnung gegen echte Daten. Wird danach wieder gelöscht.
+import { loadUsdRate, tcgplayerPrices } from "./tcgplayer.mjs";
+const fx = await loadUsdRate();
+console.log("FX", fx);
+const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} ${r.status}`); return r.json(); };
+for (const id of ["30th", "30th-c"]) {
+  const en = await get(`https://api.tcgdex.net/v2/en/sets/${id}`);
+  console.log(`== ${id}: ${en.name} ${en.releaseDate} cards ${en.cards.length}`);
+  const map = await tcgplayerPrices({ id, name: en.name, enName: en.name, releaseDate: en.releaseDate }, en.cards.map((c) => ({ no: c.localId, name: c.name })), fx);
+  const rows = en.cards.map((c) => [c.localId, c.name, map?.get(c.localId.replace(/^0+(?=\w)/, ""))]).filter((x) => x[2]);
+  rows.sort((a, b) => b[2].avg30 - a[2].avg30);
+  for (const [no, n, p] of rows.slice(0, 8)) console.log(`   ${no} ${n}: ${p.usd} $ -> ${p.avg30} € ${p.variant ?? ""} ${p.tpUrl}`);
+  for (const [no, n, p] of rows.slice(-3)) console.log(`   ${no} ${n}: ${p.usd} $ -> ${p.avg30} €`);
 }
+// Generische Gruppensuche (ohne feste Zuordnung) prüfen
+const en = await get("https://api.tcgdex.net/v2/en/sets/30th");
+const m2 = await tcgplayerPrices({ id: "x30th", name: en.name, enName: en.name, releaseDate: en.releaseDate }, en.cards.slice(0, 5).map((c) => ({ no: c.localId, name: c.name })), fx);
+console.log("generic match size", m2?.size);
+try {
+  const r = await get("https://api.pokemontcg.io/v2/cards?q=set.id:cel25c&select=id,name,number&pageSize=50");
+  const map = await tcgplayerPrices({ id: "cel25c", name: "Celebrations: Classic Collection", releaseDate: "2021-10-08" }, r.data.map((c) => ({ no: c.number, name: c.name })), fx);
+  for (const c of r.data.slice(0, 25)) console.log(`   cel25c ${c.number} ${c.name}: ${map.get(c.number)?.avg30 ?? "-"} €`);
+} catch (e) { console.log("cel25c", e.message); }
+// TCGplayer-Nummern im Hauptset ansehen
+const prods = (await get("https://tcgcsv.com/tcgplayer/3/24722/products")).results;
+console.log("30th TP numbers:", prods.map((p) => `${p.extendedData?.find((d) => d.name === "Number")?.value ?? "-"}:${p.name}`).slice(0, 400).join(" | "));
