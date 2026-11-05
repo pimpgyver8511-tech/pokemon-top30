@@ -131,7 +131,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
   border: 0; background: transparent; color: var(--bg); white-space: nowrap;
 }
 .view-toggle .tab-count { font-size: .7rem; vertical-align: super; margin-left: 2px; opacity: .8; }
-@media (max-width: 480px) { .view-toggle button { padding: 7px 4px; font-size: .85rem; } }
+@media (max-width: 480px) { .view-toggle { flex-wrap: wrap; } .view-toggle button { flex: 1 1 33%; padding: 7px 4px; font-size: .88rem; } }
 .view-toggle button[aria-pressed="true"] { background: var(--foil); color: #171a24; }
 .more-btn {
   justify-self: center; font: inherit; font-weight: 700; padding: 9px 16px; border-radius: 6px; cursor: pointer;
@@ -139,7 +139,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 }
 .quick { display: grid; gap: 10px; }
 .quick-label { font-family: var(--font-display); font-weight: 700; font-stretch: 112%; font-size: 1.15rem; }
-#quick-input, #grade-input, #arch-search {
+#quick-input, #grade-input, #arch-search, #col-search {
   width: 100%; box-sizing: border-box; font: inherit; font-size: 1.15rem; padding: 12px 14px; border-radius: 8px;
   border: 2px solid var(--accent); background: var(--surface); color: var(--ink);
 }
@@ -238,6 +238,26 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .screen-auto { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; }
 @media (max-width: 640px) { .screen-box { grid-template-columns: 1fr; } }
 .grade-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#col-search { margin: 4px 0 10px; }
+.col-in { color: var(--up); border-color: var(--up); }
+.col-del-yes { color: var(--down); border-color: var(--down); }
+.col-grade { font-size: .72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--ink); color: var(--bg); vertical-align: 2px; }
+.col-edit { display: grid; grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin: 6px 0; }
+.col-edit label { display: grid; gap: 2px; font-size: .72rem; color: var(--muted); min-width: 0; }
+.col-edit input { font: inherit; font-size: .95rem; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; box-sizing: border-box; }
+.no-img.arch-thumb { display: grid; place-items: center; aspect-ratio: 245 / 342; background: var(--line); color: var(--muted); }
+.col-chart { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.col-chart h3 { margin: 0 0 6px; font-size: .95rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.col-chart h3 small { font-weight: 400; color: var(--muted); }
+.col-plot { position: relative; height: 150px; touch-action: pan-y; }
+.col-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.col-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.col-base { stroke: var(--line); stroke-width: 1; }
+.col-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.col-dot { position: absolute; width: 9px; height: 9px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); pointer-events: none; }
+.col-label-end { position: absolute; right: 0; top: 0; font-size: .8rem; font-weight: 700; color: var(--ink); }
+.col-axis { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); margin-top: 2px; }
+.col-tip { position: absolute; top: -6px; transform: translateX(-50%); background: var(--ink); color: var(--bg); border-radius: 6px; padding: 4px 8px; font-size: .8rem; display: grid; pointer-events: none; white-space: nowrap; }
 .grade-chips button {
   font: inherit; font-size: .85rem; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
@@ -320,6 +340,7 @@ html { scroll-behavior: smooth; }
         <button type="button" id="view-quick" aria-pressed="false">Suche</button>
         <button type="button" id="view-grade" aria-pressed="false">Grading</button>
         <button type="button" id="view-archive" aria-pressed="false">Archiv</button>
+        <button type="button" id="view-collection" aria-pressed="false">Sammlung</button>
       </div>
     </div>
   </div>
@@ -384,6 +405,23 @@ html { scroll-behavior: smooth; }
       <div id="grade-chips" class="grade-chips" role="group" aria-label="Grad"></div>
       <p class="quick-hint">Karte auswählen, dann bei PriceCharting die Preise je Grad (PSA, BGS, CGC) und abgeschlossene Auktionen ansehen oder die verkauften eBay-Angebote öffnen. Beides öffnet sich in einem neuen Tab.</p>
       <div id="grade-results" class="quick-results"></div>
+    </section>
+    <section id="collection" class="archive" hidden>
+      <div class="set-head"><h2>Meine Sammlung</h2><span class="set-meta" id="col-meta"></span></div>
+      <input id="col-search" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
+        placeholder="Sammlung durchsuchen, z. B. Glurak japanisch" aria-label="Sammlung durchsuchen" hidden>
+      <div id="col-total" class="arch-total" hidden></div>
+      <div id="col-chart" class="col-chart" hidden></div>
+      <p class="quick-hint">Karten im Archiv oder in der Schnellsuche mit „+ Sammlung“ hinzufügen. Der Wert richtet sich nach Cardmarket (Ø 30 Tage) und wird jeden Morgen neu berechnet. Gespeichert nur auf diesem Gerät, deshalb ab und zu eine Sicherung speichern (enthält auch das Archiv).</p>
+      <div class="arch-actions">
+        <button type="button" id="col-backup">Sicherung speichern</button>
+        <button type="button" id="col-restore">Sicherung einlesen</button>
+        <button type="button" id="col-csv">Als CSV exportieren</button>
+        <input type="file" id="col-file" accept="application/json,.json" hidden>
+      </div>
+      <p class="quick-hint" id="col-msg" hidden></p>
+      <datalist id="col-grades"><option value="PSA 10"><option value="PSA 9"><option value="PSA 8"><option value="BGS 10"><option value="BGS 9.5"><option value="CGC 10"><option value="CGC 9.5"></datalist>
+      <div id="col-list" class="arch-list"></div>
     </section>
     <section id="archive" class="archive" hidden>
       <div class="set-head"><h2>Archiv</h2><span class="set-meta" id="arch-meta"></span></div>
@@ -518,7 +556,7 @@ function drawMovers(show) {
 }
 
 // Ansicht: "sets" = eine Tabelle pro Set, "all" = eine Gesamtrangliste über alle Sets
-let view = { "#rangliste": "all", "#suche": "quick", "#grading": "grade", "#archiv": "archive" }[location.hash] ?? "sets";
+let view = { "#rangliste": "all", "#suche": "quick", "#grading": "grade", "#archiv": "archive", "#sammlung": "collection" }[location.hash] ?? "sets";
 const PAGE = 100;
 let shown = PAGE;
 
@@ -546,18 +584,21 @@ function render() {
   const quick = view === "quick";
   const archive = view === "archive";
   const grade = view === "grade";
-  const other = quick || archive || grade; // Ansichten ohne Set-Tabellen
+  const collection = view === "collection";
+  const other = quick || archive || grade || collection; // Ansichten ohne Set-Tabellen
   for (const id of ["movers", "sets"]) if (other) document.getElementById(id).hidden = true;
   document.querySelector("main .note").hidden = other;
   document.getElementById("sets").hidden = other;
   document.getElementById("quick").hidden = !quick;
   document.getElementById("archive").hidden = !archive;
   document.getElementById("grade").hidden = !grade;
+  document.getElementById("collection").hidden = !collection;
   document.getElementById("set-filter").hidden = other;
   document.getElementById("search").hidden = other;
   if (quick) return openQuick();
   if (archive) return renderArchive();
   if (grade) return openGrade();
+  if (collection) return renderCollection();
   if (view === "all") return renderAll(setId, q);
   const out = [];
   for (const s of data.sets) {
@@ -617,9 +658,17 @@ function indexCards(cards) {
   for (const c of cards) c._hay = fold(`${c.n} ${c.e ?? ""}`);
 }
 
+// Datenstand vom Server (kleine Datei, nie zwischengespeichert). Damit erkennt der Handy-Speicher
+// neue Tagespreise sofort, statt erst beim übernächsten Öffnen.
+const dataVer = Promise.race([
+  fetch("data/status.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {})).then((st) => st.updated ?? "").catch(() => ""),
+  new Promise((res) => setTimeout(() => res(""), 1500)),
+]);
+const dataUrl = async (f) => { const v = await dataVer; return v ? `data/${f}?v=${encodeURIComponent(v)}` : `data/${f}`; };
+
 async function loadQuick() {
   const [all, species] = await Promise.all([
-    fetch("data/all.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : Promise.reject())),
+    fetch(await dataUrl("all.json"), { cache: "no-cache" }).then((r) => (r.ok ? r.json() : Promise.reject())),
     fetch("data/species.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
   ]);
   for (const [id, aliases, label] of species) {
@@ -639,11 +688,11 @@ async function loadQuick() {
     indexCards(part.cards);
     quickData.cards.push(...part.cards);
   };
-  const extra = (file, done) => fetch(file, { cache: "no-cache" })
+  const extra = (file, done) => dataUrl(file.replace("data/", "")).then((u) => fetch(u, { cache: "no-cache" }))
     .then((r) => (r.ok ? r.json() : Promise.reject()))
     .then((part) => { merge(part); done("ready"); })
     .catch(() => done("missing"))
-    .finally(() => { updateQuickHint(); renderQuick(); if (view === "archive") renderArchive(); });
+    .finally(() => { updateQuickHint(); renderQuick(); if (view === "archive") renderArchive(); if (view === "collection") renderCollection(); });
   extra("data/asia.json", (st) => { asiaState = st; })
     .then(() => extra("data/old.json", (st) => { oldState = st; }));
 }
@@ -810,7 +859,7 @@ function renderQuick() {
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
         <div class="qmeta">${meta}</div>
         ${prices}
-        <div class="qfoot">${c.a30 ? chip(pct(c.a7, c.a30)) : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>${pickBtn(c)}</div>
+        <div class="qfoot">${c.a30 ? chip(pct(c.a7, c.a30)) : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>${colBtn(c)}${pickBtn(c)}</div>
       </div>
     </article>`;
   }).join("");
@@ -1498,18 +1547,23 @@ let archIdx = null;        // Karten-ID -> aktuelle Kartendaten
 
 function archDb() {
   archDbP ??= new Promise((res, rej) => {
-    const r = indexedDB.open("pokemon-top30", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("archiv", { keyPath: "id" });
+    const r = indexedDB.open("pokemon-top30", 2);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains("archiv")) db.createObjectStore("archiv", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("sammlung")) db.createObjectStore("sammlung", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("wert")) db.createObjectStore("wert", { keyPath: "d" });
+    };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
   return archDbP;
 }
-async function archTx(mode, fn) {
+async function archTx(mode, fn, store = "archiv") {
   const db = await archDb();
   return new Promise((res, rej) => {
-    const tx = db.transaction("archiv", mode);
-    const req = fn(tx.objectStore("archiv"));
+    const tx = db.transaction(store, mode);
+    const req = fn(tx.objectStore(store));
     tx.oncomplete = () => res(req?.result);
     tx.onerror = () => rej(tx.error);
   });
@@ -1598,6 +1652,7 @@ async function renderArchive() {
   }
   quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
   await quickLoading;
+  await colRefresh();
   const all = entries;
   const search = document.getElementById("arch-search");
   search.hidden = !all.length;
@@ -1655,6 +1710,7 @@ async function renderArchive() {
           ${priceCell("Ø 30 beim Scan", then30)}${priceCell("Ø 30 heute", now30, true)}${priceCell("Ø 7 heute", now?.a7 ?? null)}
         </div>
         <div class="qfoot">${then30 && now30 ? chip(pct(now30, then30)) : ""}
+          ${colArch.has(e.id) ? '<button type="button" class="arch-btn col-in" data-col-go>✓ In Sammlung</button>' : `<button type="button" class="arch-btn" data-col-arch="${e.id}">+ Sammlung</button>`}
           <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}">Suchen</button>
           <a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>
           <button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div>
@@ -1703,6 +1759,13 @@ function archInit() {
   document.getElementById("arch-list").addEventListener("click", async (e) => {
     const del = e.target.closest("[data-arch-del]");
     if (del) { await archDel(Number(del.dataset.archDel)); archUpdateCount(); renderArchive(); return; }
+    if (e.target.closest("[data-col-go]")) return document.getElementById("view-collection").click();
+    const ca = e.target.closest("[data-col-arch]");
+    if (ca) {
+      const a = await archGet(Number(ca.dataset.colArch));
+      if (a?.card) { await colAdd(archCurrent(a.card) ? archCardInfo(archCurrent(a.card)) : a.card, { thumb: a.thumb, archId: a.id, rec: a.rec }); renderArchive(); }
+      return;
+    }
     const s = e.target.closest("[data-arch-search]");
     if (s) {
       document.getElementById("view-quick").click();
@@ -1730,6 +1793,13 @@ function archInit() {
   });
   // "Diese ist es" in der Trefferliste nach einem Scan
   document.getElementById("quick-results").addEventListener("click", async (e) => {
+    if (e.target.closest("[data-col-go]")) return document.getElementById("view-collection").click();
+    const add = e.target.closest("[data-col-add]");
+    if (add) {
+      const c = quickData.cards.find((x) => x.i === add.dataset.colAdd);
+      if (c) { await colAdd(archCardInfo(c)); renderQuick(); }
+      return;
+    }
     const b = e.target.closest("[data-pick]");
     if (!b) return;
     const c = quickData.cards.find((x) => x.i === b.dataset.pick);
@@ -1870,6 +1940,256 @@ function screenInit() {
   });
 }
 
+// ---------- Meine Sammlung: eigene Karten mit Anzahl, Kaufpreis, Grad und täglich neuem Cardmarket-Wert ----------
+const colPut = (e) => archTx("readwrite", (s) => s.put(e), "sammlung");
+const colDel = (id) => archTx("readwrite", (s) => s.delete(id), "sammlung");
+const colAll = async () => ((await archTx("readonly", (s) => s.getAll(), "sammlung")) ?? []).sort((a, b) => b.id - a.id);
+const valAll = async () => ((await archTx("readonly", (s) => s.getAll(), "wert")) ?? []).sort((a, b) => a.d.localeCompare(b.d));
+const valPut = (v) => archTx("readwrite", (s) => s.put(v), "wert");
+let colCards = new Set();   // Karten-IDs in der Sammlung (für die Knöpfe in Suche und Archiv)
+let colArch = new Set();    // Archiv-Einträge, die schon in der Sammlung sind
+let colDelAsk = null;       // Eintrag, bei dem "Entfernen" einmal gedrückt wurde
+
+async function colRefresh() {
+  let list = [];
+  try { list = await colAll(); } catch {}
+  colCards = new Set(list.map((e) => e.card?.i).filter(Boolean));
+  colArch = new Set(list.map((e) => e.archId).filter(Boolean));
+  const n = list.reduce((s, e) => s + (e.qty || 1), 0);
+  document.getElementById("view-collection").innerHTML = n ? `Sammlung<span class="tab-count">${n}</span>` : "Sammlung";
+  return list;
+}
+
+async function colAdd(card, extra = {}) {
+  await colPut({ id: Date.now(), at: new Date().toISOString(), card, qty: 1, buy: null, grade: "",
+    thumb: extra.thumb ?? null, archId: extra.archId ?? null, rec: extra.rec ?? null });
+  await colRefresh();
+}
+
+function colBtn(c) {
+  return colCards.has(c.i)
+    ? '<button type="button" class="arch-btn col-in" data-col-go>✓ In Sammlung</button>'
+    : `<button type="button" class="arch-btn" data-col-add="${esc(c.i)}">+ Sammlung</button>`;
+}
+
+const colNum = (v) => { const n = Number(String(v ?? "").replace(/[€\s]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".")); return v === "" || v == null || !Number.isFinite(n) ? null : n; };
+const colNow = (e) => archCurrent(e.card)?.a30 ?? null;
+
+// Sammlungswert einmal pro Preistag merken (für die Verlaufskurve)
+async function colSnapshot(total, paid, n) {
+  if (!quickData?.updated || asiaState === "loading" || oldState === "loading") return;
+  try { await valPut({ d: quickData.updated.slice(0, 10), v: Math.round(total * 100) / 100, paid, n }); } catch {}
+}
+
+async function renderCollection() {
+  const box = document.getElementById("col-list");
+  let all;
+  try { all = await colRefresh(); await archDb(); } catch {
+    box.innerHTML = '<div class="status">Die Sammlung ist in diesem Browser nicht verfügbar (z. B. im privaten Fenster).</div>';
+    return;
+  }
+  quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+  await quickLoading;
+  const loading = asiaState === "loading" || oldState === "loading";
+  const search = document.getElementById("col-search");
+  search.hidden = !all.length;
+  const qs = search.value.trim();
+  const entries = qs ? all.filter((e) => archMatch(e, parseQuery(qs))) : all;
+
+  // Werte: Ø 30 Tage heute × Anzahl; Gewinn nur für Karten mit Kaufpreis
+  let total = 0, missing = 0, paid = 0, paidNow = 0, paidCount = 0, pieces = 0;
+  for (const e of entries) {
+    const q = e.qty || 1, now = colNow(e);
+    pieces += q;
+    if (now != null) total += now * q; else missing++;
+    if (e.buy != null && now != null) { paid += e.buy * q; paidNow += now * q; paidCount++; }
+  }
+  if (!qs && all.length) colSnapshot(total, paidCount ? paid : null, pieces);
+  const stand = quickData?.updated ? `Preise vom ${fmtDate(quickData.updated)}` : "";
+  document.getElementById("col-meta").textContent = !all.length ? ""
+    : `${qs ? `${entries.length} von ${all.length} Einträgen` : `${pieces} Karte${pieces === 1 ? "" : "n"}`}${stand ? " · " + stand : ""}`;
+  const tot = document.getElementById("col-total");
+  tot.hidden = !entries.length;
+  const diff = paidNow - paid;
+  tot.innerHTML = entries.length ? `
+    <div class="arch-total-main"><span>${qs ? "Wert der Treffer" : "Wert der Sammlung"} (Ø 30 Tage)</span><b>${fmtPrice(total)}</b></div>
+    <div class="arch-total-side">
+      <div><span>Bezahlt</span><b>${paidCount ? fmtPrice(paid) : "–"}</b></div>
+      <div><span>Gewinn / Verlust</span>${paidCount ? `<b>${diff >= 0 ? "+" : "−"}${fmtPrice(Math.abs(diff))}</b> ${chip(pct(paidNow, paid))}` : "<b>–</b>"}</div>
+    </div>
+    ${[
+      missing ? `${missing} Karte${missing === 1 ? "" : "n"} ohne aktuellen Preis nicht mitgezählt${loading ? " (ältere Karten werden noch geladen)" : ""}.` : "",
+      paidCount && paidCount < entries.length ? `Gewinn nur für ${paidCount} von ${entries.length} Einträgen mit Kaufpreis.` : "",
+    ].filter(Boolean).map((t) => `<p class="quick-hint">${t}</p>`).join("")}` : "";
+  document.getElementById("col-csv").disabled = !all.length;
+  await colChart(qs);
+
+  if (!all.length) {
+    box.innerHTML = '<div class="status">Noch keine Karten in deiner Sammlung. Im Archiv oder in der Schnellsuche bei einer Karte auf „+ Sammlung“ tippen.</div>';
+    return;
+  }
+  if (!entries.length) { box.innerHTML = '<div class="status">Keine Karte in der Sammlung passt zur Suche.</div>'; return; }
+  box.innerHTML = entries.map((e) => {
+    const c = e.card, cur = archCurrent(c), q = e.qty || 1, now = cur?.a30 ?? null;
+    const img = e.thumb || c.img;
+    const pic = img ? `<img class="arch-thumb" loading="lazy" src="${esc(img)}" alt="${esc(c.n)}">` : '<span class="arch-thumb no-img">?</span>';
+    const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
+    const buyTxt = e.buy != null ? e.buy.toFixed(2).replace(".", ",") : "";
+    return `<article class="arch-item col-item">${pic}
+      <div class="qbody">
+        <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}</div>
+        <div class="qmeta">${set}</div>
+        <div class="qprices">
+          ${priceCell("Ø 30 heute", now, true)}${priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, now != null ? now * q : null) : ""}${e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
+        </div>
+        ${e.grade ? '<div class="qmeta">Cardmarket-Preis gilt für ungegradete Karten.</div>' : ""}
+        <div class="col-edit">
+          <label>Anzahl<input type="number" min="1" step="1" inputmode="numeric" value="${q}" data-col-f="qty" data-col-id="${e.id}"></label>
+          <label>Bezahlt € / St.<input type="text" inputmode="decimal" placeholder="–" value="${esc(buyTxt)}" data-col-f="buy" data-col-id="${e.id}"></label>
+          <label>Grad<input type="text" list="col-grades" placeholder="ohne" value="${esc(e.grade ?? "")}" data-col-f="grade" data-col-id="${e.id}"></label>
+        </div>
+        <div class="qfoot">${e.buy != null && now != null ? chip(pct(now, e.buy)) : ""}
+          <a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>
+          ${colDelAsk === e.id
+            ? `<button type="button" class="arch-btn col-del-yes" data-col-del="${e.id}">Wirklich entfernen</button><button type="button" class="arch-btn" data-col-del-no>Abbrechen</button>`
+            : `<button type="button" class="arch-btn" data-col-ask="${e.id}">Entfernen</button>`}
+        </div>
+      </div></article>`;
+  }).join("");
+}
+
+// Wertverlauf als Linie (ein Punkt pro Preistag), mit Tooltip beim Antippen / Überfahren
+async function colChart(qs) {
+  const el = document.getElementById("col-chart");
+  let pts = [];
+  try { pts = await valAll(); } catch {}
+  if (qs || !pts.length) { el.hidden = true; return; }
+  el.hidden = false;
+  if (pts.length < 2) {
+    el.innerHTML = `<h3>Wertverlauf</h3><p class="quick-hint">Der Verlauf erscheint ab dem zweiten Preistag (ein Punkt pro Tag, sobald du die Sammlung öffnest).</p>`;
+    return;
+  }
+  const W = 640, H = 180, L = 8, R = 8, T = 14, B = 24;
+  const vs = pts.map((p) => p.v);
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  if (hi - lo < 1) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const t0 = Date.parse(pts[0].d), t1 = Date.parse(pts.at(-1).d);
+  const x = (p) => L + ((Date.parse(p.d) - t0) / (t1 - t0)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${x(p).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  const dd = (d) => new Date(d).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+  const first = pts[0], last = pts.at(-1);
+  el.innerHTML = `<h3>Wertverlauf <small>${dd(first.d)} – ${dd(last.d)} · ${chip(pct(last.v, first.v)).replace("chip", "chip col-chip")}</small></h3>
+    <div class="col-plot">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Wert der Sammlung von ${fmtPrice(first.v)} auf ${fmtPrice(last.v)}">
+        <line class="col-base" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>
+        <path class="col-line" d="${path}" vector-effect="non-scaling-stroke"/>
+        <line class="col-cross" x1="0" x2="0" y1="${T}" y2="${H - B}" vector-effect="non-scaling-stroke" hidden/>
+      </svg>
+      <span class="col-dot" style="left:${(x(last) / W) * 100}%;top:${(y(last.v) / H) * 100}%"></span>
+      <span class="col-label col-label-end">${fmtPrice(last.v)}</span>
+      <div class="col-tip" hidden></div>
+    </div>
+    <div class="col-axis"><span>${dd(first.d)}</span><span>${dd(last.d)}</span></div>`;
+  const plot = el.querySelector(".col-plot"), tip = el.querySelector(".col-tip"), cross = el.querySelector(".col-cross"), dot = el.querySelector(".col-dot");
+  const move = (ev) => {
+    const r = plot.getBoundingClientRect();
+    const fx = ((ev.clientX - r.left) / r.width) * W;
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(x(p) - fx) < Math.abs(x(best) - fx)) best = p;
+    const px = (x(best) / W) * 100, py = (y(best.v) / H) * 100;
+    cross.setAttribute("x1", x(best)); cross.setAttribute("x2", x(best)); cross.hidden = false;
+    dot.style.left = px + "%"; dot.style.top = py + "%";
+    tip.hidden = false;
+    tip.innerHTML = `<b>${fmtPrice(best.v)}</b><span>${fmtDate(best.d)}${best.n ? ` · ${best.n} Karten` : ""}</span>`;
+    tip.style.left = Math.min(Math.max(px, 18), 82) + "%";
+  };
+  const leave = () => { tip.hidden = true; cross.hidden = true; dot.style.left = (x(last) / W) * 100 + "%"; dot.style.top = (y(last.v) / H) * 100 + "%"; };
+  plot.addEventListener("pointermove", move);
+  plot.addEventListener("pointerdown", move);
+  plot.addEventListener("pointerleave", leave);
+}
+
+function colCsv(entries) {
+  const num = (v) => (v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","));
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Wert gesamt", "Gewinn / Verlust", "Hinzugefügt", "Cardmarket"];
+  const rows = entries.map((e) => {
+    const c = e.card, cur = archCurrent(c), n = e.qty || 1, now = cur?.a30 ?? null;
+    return [c.n, c.e, c.set, c.no, BADGE[c.L ?? "intl"], c.r === "None" ? "" : c.r, n, e.grade, num(e.buy), num(now), num(cur?.a7 ?? null),
+      num(now != null ? now * n : null), num(now != null && e.buy != null ? (now - e.buy) * n : null), fmtDate(e.at), c.u].map(q).join(";");
+  });
+  return "﻿" + [head.map(q).join(";"), ...rows].join("\r\n");
+}
+
+function colDownload(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function colInit() {
+  const list = document.getElementById("col-list");
+  let t;
+  document.getElementById("col-search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(renderCollection, 120); });
+  list.addEventListener("change", async (ev) => {
+    const f = ev.target.closest("[data-col-f]");
+    if (!f) return;
+    const all = await colAll();
+    const e = all.find((x) => x.id === Number(f.dataset.colId));
+    if (!e) return;
+    if (f.dataset.colF === "qty") e.qty = Math.max(1, Math.round(Number(f.value) || 1));
+    if (f.dataset.colF === "buy") e.buy = colNum(f.value);
+    if (f.dataset.colF === "grade") e.grade = f.value.trim();
+    await colPut(e);
+    renderCollection();
+  });
+  list.addEventListener("click", async (ev) => {
+    const ask = ev.target.closest("[data-col-ask]");
+    if (ask) { colDelAsk = Number(ask.dataset.colAsk); return renderCollection(); }
+    if (ev.target.closest("[data-col-del-no]")) { colDelAsk = null; return renderCollection(); }
+    const del = ev.target.closest("[data-col-del]");
+    if (del) { await colDel(Number(del.dataset.colDel)); colDelAsk = null; renderCollection(); }
+  });
+  document.getElementById("col-csv").addEventListener("click", async () => {
+    colDownload(new Blob([colCsv(await colAll())], { type: "text/csv;charset=utf-8" }), `pokemon-sammlung-${new Date().toISOString().slice(0, 10)}.csv`);
+  });
+  // Sicherung: Sammlung, Wertverlauf und Archiv in einer Datei
+  document.getElementById("col-backup").addEventListener("click", async () => {
+    const data = { app: "pokemon-top30", version: 1, at: new Date().toISOString(),
+      sammlung: await colAll(), wert: await valAll(), archiv: await archAll() };
+    colDownload(new Blob([JSON.stringify(data)], { type: "application/json" }), `pokemon-sicherung-${new Date().toISOString().slice(0, 10)}.json`);
+  });
+  const file = document.getElementById("col-file");
+  document.getElementById("col-restore").addEventListener("click", () => file.click());
+  file.addEventListener("change", async () => {
+    const msg = document.getElementById("col-msg");
+    const f = file.files?.[0];
+    file.value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (data.app !== "pokemon-top30") throw new Error("keine Sicherung dieser Seite");
+      const s = data.sammlung ?? [], w = data.wert ?? [], a = data.archiv ?? [];
+      for (const e of s) if (e?.id && e.card) await colPut(e);
+      for (const v of w) if (v?.d) await valPut(v);
+      for (const e of a) if (e?.id) await archPut(e);
+      msg.textContent = `Eingelesen: ${s.length} Sammlungs-Einträge, ${a.length} Archiv-Einträge. Vorhandene Einträge bleiben erhalten.`;
+      archUpdateCount();
+    } catch (err) {
+      msg.textContent = `Die Datei konnte nicht eingelesen werden (${err.message}).`;
+    }
+    msg.hidden = false;
+    renderCollection();
+  });
+  colRefresh();
+}
+
 // ---------- Grading-Suche: passende Karte finden, dann PriceCharting / eBay-Verkäufe öffnen ----------
 let gradeSel = "";
 const GRADES = [["", "Alle"], ["PSA 10", "PSA 10"], ["PSA 9", "PSA 9"], ["BGS 10", "BGS 10"], ["CGC 10", "CGC 10"]];
@@ -1963,7 +2283,8 @@ async function init() {
     document.getElementById("view-quick").setAttribute("aria-pressed", String(v === "quick"));
     document.getElementById("view-archive").setAttribute("aria-pressed", String(v === "archive"));
     document.getElementById("view-grade").setAttribute("aria-pressed", String(v === "grade"));
-    const hash = { all: "#rangliste", quick: "#suche", grade: "#grading", archive: "#archiv" }[v];
+    document.getElementById("view-collection").setAttribute("aria-pressed", String(v === "collection"));
+    const hash = { all: "#rangliste", quick: "#suche", grade: "#grading", archive: "#archiv", collection: "#sammlung" }[v];
     try { history.replaceState(null, "", hash ?? location.pathname + location.search); } catch {}
     render();
     window.scrollTo(0, 0);
@@ -1973,7 +2294,9 @@ async function init() {
   document.getElementById("view-quick").addEventListener("click", () => setView("quick"));
   document.getElementById("view-archive").addEventListener("click", () => setView("archive"));
   document.getElementById("view-grade").addEventListener("click", () => setView("grade"));
+  document.getElementById("view-collection").addEventListener("click", () => setView("collection"));
   gradeInit();
+  colInit();
   document.getElementById("listen-btn").addEventListener("click", () => (listening ? stopListening() : startListening()));
   document.getElementById("listen-history").addEventListener("click", (e) => {
     const b = e.target.closest("[data-q]");

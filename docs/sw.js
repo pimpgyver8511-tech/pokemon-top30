@@ -32,10 +32,18 @@ self.addEventListener("fetch", (event) => {
   if (!isData && !isSdk) return;
   event.respondWith((async () => {
     const cache = await caches.open(DATA_CACHE);
-    const key = url.origin + url.pathname;
-    const cached = await cache.match(key);
-    const network = fetch(req).then((res) => {
-      if (res.ok) cache.put(key, res.clone());
+    // Kartendaten tragen den Datenstand im Link (?v=...): neuer Stand = neuer Eintrag, alte werden aufgeräumt
+    const key = url.origin + url.pathname + url.search;
+    const cached = await cache.match(key, { ignoreSearch: !url.search });
+    if (cached && url.search && isData) return cached; // gleicher Datenstand: nichts nachladen
+    const network = fetch(req).then(async (res) => {
+      if (res.ok) {
+        await cache.put(key, res.clone());
+        for (const k of await cache.keys()) {
+          const u = new URL(k.url);
+          if (u.pathname === url.pathname && k.url !== key) cache.delete(k);
+        }
+      }
       return res;
     });
     if (cached) {

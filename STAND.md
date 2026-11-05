@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 01.11.2026
+Zuletzt aktualisiert: 05.11.2026
 
 ## Was fertig ist
 
@@ -15,6 +15,8 @@ Zuletzt aktualisiert: 01.11.2026
 - **Bild erkennen:** Screenshot hochladen, einfügen oder am PC per Drag & Drop irgendwo auf die Seite ziehen (auch mehrere); Claude erkennt die Karte (eigener API-Schlüssel nötig)
 - **Archiv** (`#archiv`): jede erkannte Karte mit Scan-Vorschau, Preis beim Scan und heute, Gesamtwert-Kasten (Ø 30 Tage, heute vs. beim Scan), mehrere Bilder auf einmal, CSV-Export, Suchfeld (wie Schnellsuche: Name in jeder Sprache, Sprache, Nummer, Set; Gesamtwert zeigt dann nur die Treffer); nach einem Scan „Diese ist es“ zum Korrigieren. Gespeichert nur auf dem Gerät (IndexedDB).
 - **Bildschirm mitlesen (PC, Chrome/Edge):** Whatnot-Tab oder -Fenster freigeben; „Jetzt erkennen“ (Leertaste) oder automatisch bei neuer Karte (Bildmitte vergleicht >10 % Änderung, 2 s ruhig, höchstens alle 10 s). Gleiche Karte hintereinander nur einmal im Archiv.
+- **Meine Sammlung** (`#sammlung`): Karten aus Archiv oder Schnellsuche mit „+ Sammlung“ übernehmen; je Eintrag Anzahl, Kaufpreis pro Stück, Grad (Notiz; Preis bleibt Cardmarket ungegradet). Gesamtwert Ø 30 Tage × Anzahl, Bezahlt, Gewinn/Verlust, Wertverlauf (ein Punkt pro Preistag, gespeichert beim Öffnen), Suche, CSV, Sicherung als Datei (Sammlung + Wertverlauf + Archiv) und Einlesen. Nur auf dem Gerät (IndexedDB-Speicher `sammlung`, `wert`, Datenbank-Version 2).
+- **Frische Tagespreise auf dem Handy:** Die Seite liest zuerst `data/status.json` (nie zwischengespeichert) und lädt die Kartendaten mit `?v=<Datenstand>`; der Service Worker nimmt bei neuem Stand sofort die neue Datei und räumt die alte weg.
 - **Grading** (`#grading`): eigene Suche für gegradete Karten. Karte finden (gleiche Suche wie Schnellsuche), Grad wählen (PSA 10/9, BGS 10, CGC 10), dann Link zu PriceCharting (Preise je Grad, abgeschlossene Auktionen) und zu verkauften eBay-Angeboten. Keine Preise von PriceCharting auf der Seite selbst (Abrufen verbieten deren Nutzungsbedingungen, API kostet Geld).
 - **Foto machen:** öffnet direkt die Kamera (auch in der installierten App)
 - **Als App installierbar,** Screenshots über das Android-Teilen-Menü direkt an die Seite schicken
@@ -43,6 +45,10 @@ Zuletzt aktualisiert: 01.11.2026
 ## Erledigt am 01.11.2026
 
 - Archiv durchsuchbar; Archiv-Zähler im Reiter als kleine Zahl, damit die Reiter am Handy nicht umbrechen
+
+## Erledigt am 05.11.2026
+
+- „Meine Sammlung“ mit Kaufpreis, Anzahl, Grad, Gewinn/Verlust, Wertverlauf und Sicherung; Reiter am Handy in zwei Reihen (3 × 2)
 
 ## Offen
 
