@@ -48,6 +48,8 @@ Zuletzt aktualisiert: 05.11.2026
 
 ## Erledigt am 05.11.2026
 
+- TCGplayer-Ersatzpreise (in € umgerechnet) für Sets ohne Cardmarket-Preise
+
 - Sammlung: Performance Tag/Woche/Monat/Jahr, „Beste Performer“, ★-Markierung, Sortierung
 - „Meine Sammlung“ mit Kaufpreis, Anzahl, Grad, Gewinn/Verlust, Wertverlauf und Sicherung; Reiter am Handy in zwei Reihen (3 × 2)
 
@@ -62,8 +64,8 @@ Zuletzt aktualisiert: 05.11.2026
 - Cardmarket-Preise gelten für alle europäischen Sprachen zusammen (Deutsch = Englisch)
 - Bei koreanischen und chinesischen Karten ist unklar, ob der Preis nur für diese Sprachversion gilt
 - Wenige koreanische Karten in der Datenquelle; viele asiatische Karten ohne Bild
-- Celebrations Classic Collection (cel25c): weder TCGdex noch pokemontcg.io haben Cardmarket-Preise. Ist fest eingeplant und erscheint automatisch, sobald es Preise gibt. Option TCGplayer-US-Preise ($) bewusst zurückgestellt (Entscheidung 22.10.: erst mal warten)
-- „30 Jahre“-Sets: noch keine Cardmarket-Preise bei den Datenquellen, erscheinen automatisch
+- **Ersatzpreise TCGplayer (seit 05.11.):** Hat ein Set gar keine Cardmarket-Preise (z. B. „30 Jahre“, „30 Jahre: Klassische Sammlung“, Celebrations Classic Collection), nimmt der Lauf TCGplayer-Marktpreise (USA) von tcgcsv.com und rechnet sie zum EZB-Referenzkurs (letzter Bankarbeitstag) in Euro um (`scripts/tcgplayer.mjs`). Auf der Seite mit „US“ markiert, Ø 7 Tage leer, Link zu TCGplayer. Sobald Cardmarket Preise hat, werden automatisch diese genommen. Zuordnung über Nummer + Name; Test am 05.11.: 158/158 und 30/30 Karten. Fällt pokemontcg.io für cel25c aus, wird das Set direkt aus TCGplayer gebaut.
+- US-Preise sind US-Marktpreise: In Europa kann der Preis deutlich abweichen.
 - Ältere Karten (international seit 1999, japanisch seit 1996) sind in der Schnellsuche (docs/data/old.json, wird im Hintergrund nachgeladen). Die Top-30-Ansichten bleiben bei 5 Jahren.
 - Findet die Bilderkennung genau die Version nicht, erscheint ein Hinweis mit Link zur Cardmarket-Suche.
 - Teilen-Menü und Mithören funktionieren in Chrome (Android), nicht in Firefox; „Bild erkennen“ per Galerie geht in beiden

@@ -1,6 +1,7 @@
 // Holt die Cardmarket-Preise aller Karten der Haupt- und Spezialsets der
 // letzten 5 Jahre über die TCGdex-API und schreibt die Top 30 pro Set
 // (sortiert nach 30-Tage-Durchschnitt) nach docs/data/.
+import { loadUsdRate, tcgplayerCards, tcgplayerPrices } from "./tcgplayer.mjs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -345,7 +346,7 @@ function speciesIndex(species) {
 
 // Gebaute Sets (aus buildSet) in die kompakte Form der Schnellsuche bringen
 function toSearchData(builtSets, tag) {
-  const sets = builtSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate }));
+  const sets = builtSets.map((s) => ({ id: s.id, name: s.name, off: s.official, date: s.releaseDate, ...(s.priceSource ? { src: s.priceSource } : {}) }));
   const cards = [];
   builtSets.forEach((s, si) => {
     for (const c of s.allCards) {
@@ -356,6 +357,7 @@ function toSearchData(builtSets, tag) {
       if (c.rarity) row.r = c.rarity;
       if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
       if (c.variant) row.v = c.variant;
+      if (c.src === "tcgplayer") Object.assign(row, { x: "tp", usd: c.usd, tu: c.tpUrl });
       if (c.thumb) row.img = c.thumb;
       if (c.large && c.large !== c.thumb) row.big = c.large;
       row.u = c.url;
@@ -458,7 +460,7 @@ async function buildFromPtcg(ptcgId, deName) {
       return {
         hasPrice: Boolean(price && isNum(price.avg30)),
         enName: name !== c.name ? c.name : null,
-        id: `${ptcgId}-${c.number}`,
+        id: c.id ?? `${ptcgId}-${c.number}`,
         no: c.number,
         name,
         rarity: c.rarity ?? null,
@@ -483,6 +485,70 @@ async function buildFromPtcg(ptcgId, deName) {
     console.warn(`pokemontcg.io-Set ${ptcgId} übersprungen: ${err.message}`);
     return null;
   }
+}
+
+// Ersatzpreise von TCGplayer (USA, in Euro umgerechnet) für Sets ohne jeden Cardmarket-Preis
+let FX = undefined; // { usd, date } – Dollar je Euro laut EZB
+async function usdRate() {
+  if (FX !== undefined) return FX;
+  try {
+    FX = await loadUsdRate();
+    console.log(`EZB-Kurs vom ${FX.date}: 1 € = ${FX.usd} $`);
+  } catch (err) {
+    console.warn(`EZB-Kurs nicht abrufbar, keine TCGplayer-Ersatzpreise: ${err.message}`);
+    FX = null;
+  }
+  return FX;
+}
+
+async function addTcgplayer(built, setInfo) {
+  const fx = await usdRate();
+  const need = built.allCards.filter((c) => !c.hasPrice);
+  if (!fx || !need.length) return built;
+  let map = null;
+  try {
+    map = await tcgplayerPrices(setInfo, need.map((c) => ({ no: c.no, name: c.enName ?? c.name })), fx);
+  } catch (err) {
+    console.warn(`  TCGplayer nicht erreichbar (${setInfo.id}): ${err.message}`);
+  }
+  if (!map?.some(Boolean)) return built;
+  need.forEach((c, i) => {
+    if (!map[i]) return;
+    const { tpName, ...p } = map[i];
+    Object.assign(c, p, { hasPrice: true });
+  });
+  const priced = built.allCards.filter((c) => c.hasPrice);
+  built.cards = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c);
+  built.priceSource = priced.every((c) => c.src === "tcgplayer") ? "tcgplayer" : "mixed";
+  built.fx = fx;
+  console.log(`  ${built.name}: ${priced.length} Karten mit Preis (TCGplayer umgerechnet), Top ${built.cards.length}`);
+  return built;
+}
+
+// Notlösung, wenn pokemontcg.io ausfällt: Set nur aus TCGplayer bauen
+async function buildFromTcgplayer(id, deName) {
+  const fx = await usdRate();
+  const meta = PTCG_SET_FALLBACK[id] ?? {};
+  if (!fx) return null;
+  let rows = null;
+  try {
+    rows = await tcgplayerCards({ id, name: meta.name ?? id, enName: meta.name, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-") }, fx);
+  } catch (err) {
+    console.warn(`  TCGplayer nicht erreichbar (${id}): ${err.message}`);
+  }
+  if (!rows?.length) return null;
+  const cards = rows.map((c) => {
+    const name = deName(c.name);
+    const { img, ...rest } = c;
+    return { ...rest, hasPrice: isNum(c.avg30), enName: name !== c.name ? c.name : null, id: `${id}-tp-${c.no}-${c.name}`.replace(/[^\w-]+/g, "-"),
+      name, thumb: img, large: img, url: cardmarketUrl(null, c.name) };
+  });
+  const priced = cards.filter((c) => c.hasPrice);
+  return {
+    id, name: meta.name ?? id, serie: meta.series ?? null, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"), logo: null,
+    cards: [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c),
+    allCards: cards, official: meta.printedTotal ?? null, priceSource: "tcgplayer", fx,
+  };
 }
 
 // Englische Pokémon-Namen in Kartennamen durch die deutschen ersetzen ("Charizard" -> "Glurak")
@@ -527,6 +593,10 @@ async function main() {
       const fallback = await pokemontcgPrices(set);
       if (fallback?.size) built = await buildSet(set, fallback);
     }
+    if (!built.cards.length) {
+      const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`);
+      built = await addTcgplayer(built, { id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate });
+    }
     allSets.push(built);
     if (built.cards.length) result.push(built);
     else {
@@ -540,7 +610,9 @@ async function main() {
   // Fest gewünschte Sets, die TCGdex nicht hat, aus pokemontcg.io ergänzen
   const have = new Set(mainSets.map((st) => st.id));
   for (const id of EXTRA_TOP_SETS.filter((x) => !have.has(x))) {
-    const built = await buildFromPtcg(id, makeDeNamer(species));
+    let built = await buildFromPtcg(id, makeDeNamer(species));
+    if (built && !built.cards.length) built = await addTcgplayer(built, { id, name: built.name, enName: built.name, releaseDate: built.releaseDate });
+    if (!built) built = await buildFromTcgplayer(id, makeDeNamer(species));
     if (built?.cards.length) { result.push(built); allSets.push(built); }
   }
   result.sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""));
@@ -559,6 +631,7 @@ async function main() {
     JSON.stringify({
       updated: now.toISOString(),
       source: "TCGdex / Cardmarket",
+      ...(FX ? { fx: FX } : {}),
       sets: result.map(({ allCards, official, ...s }) => s),
     }),
   );
@@ -568,7 +641,7 @@ async function main() {
   const { sets: searchSets, cards: searchCards } = toSearchData(allSets, tag);
   await writeFile(
     path.join(OUT_DIR, "all.json"),
-    JSON.stringify({ updated: now.toISOString(), sets: searchSets, cards: searchCards }),
+    JSON.stringify({ updated: now.toISOString(), ...(FX ? { fx: FX } : {}), sets: searchSets, cards: searchCards }),
   );
   console.log(`Schnellsuche: ${searchCards.length} Karten, davon ${searchCards.filter((c) => c.a30).length} mit Preis`);
   console.log(`  davon mit erkanntem Pokémon: ${searchCards.filter((c) => c.p).length}`);

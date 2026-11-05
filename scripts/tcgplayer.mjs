@@ -152,3 +152,34 @@ export async function tcgplayerPrices(set, cards, fx) {
   if (unmatched.length) console.warn(`  TCGplayer ${set.id}: ${unmatched.length} Karten ohne Zuordnung, z. B. ${unmatched.slice(0, 8).join(" | ")}`);
   return out;
 }
+
+/**
+ * Ganzes Set direkt aus TCGplayer (wenn auch die zweite Quelle ausfällt).
+ * Rückgabe: [{ no, name, rarity, img, ...Preis }] oder null
+ */
+export async function tcgplayerCards(set, fx) {
+  const group = await findGroup(set);
+  if (!group) return null;
+  const [prods, prices] = await Promise.all([
+    get(`${TCGCSV}/${CATEGORY}/${group.groupId}/products`).then((r) => r.results ?? []),
+    get(`${TCGCSV}/${CATEGORY}/${group.groupId}/prices`).then((r) => r.results ?? []),
+  ]);
+  const cards = [];
+  for (const p of prods) {
+    const num = p.extendedData?.find((d) => d.name === "Number")?.value;
+    if (!num) continue; // Displays, Boxen usw.
+    const r = prices.filter((x) => x.productId === p.productId && (x.marketPrice > 0 || x.lowPrice > 0)).sort((a, b) => {
+      const ia = SUBTYPE_ORDER.indexOf(a.subTypeName), ib = SUBTYPE_ORDER.indexOf(b.subTypeName);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    })[0];
+    const usd = r ? (r.marketPrice > 0 ? r.marketPrice : r.lowPrice) : null;
+    cards.push({
+      no: String(num).split("/")[0], name: String(p.name).replace(/\s+-\s+[^-]*$/, ""),
+      rarity: p.extendedData?.find((d) => d.name === "Rarity")?.value ?? null, img: p.imageUrl ?? null,
+      ...(usd ? { avg30: round(usd / fx.usd), trend: round(usd / fx.usd), low: round(r.lowPrice / fx.usd), avg1: null, avg7: null,
+        variant: null, src: "tcgplayer", usd: round(usd), tpUrl: p.url ?? null } : {}),
+    });
+  }
+  console.log(`  TCGplayer: Set ${set.id} direkt aus Gruppe ${group.groupId} "${group.name}", ${cards.length} Karten`);
+  return cards;
+}
