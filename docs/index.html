@@ -272,6 +272,12 @@ b.up { color: var(--up); } b.down { color: var(--down); } b.flat { color: var(--
 #collection > * { min-width: 0; }
 .col-rank { margin: 0 0 8px; padding: 0; list-style: none; display: grid; gap: 6px; font-variant-numeric: tabular-nums; }
 .col-rank li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; }
+.col-rank li[data-col-show] { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: 0 -4px; }
+.col-rank li[data-col-show]:hover, .col-rank li[data-col-show]:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); outline: none; }
+.col-rank li[data-col-show]:active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.col-item { scroll-margin-top: 190px; }
+@keyframes col-flash { 0%, 60% { box-shadow: 0 0 0 3px var(--foil); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.col-flash { animation: col-flash 1.8s ease-out; }
 .col-rank-i { font-weight: 800; color: var(--muted); text-align: right; }
 .col-rank li:nth-child(-n+3) .col-rank-i { color: var(--ink); }
 .col-rank-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -2160,7 +2166,7 @@ async function renderCollection() {
   rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage bzw. eigener Wert, pro Stück</small></h3>
     <ol class="col-rank">${ranked.slice(0, RANK_N).map((e, i) => {
       const c = e.card, cur = archCurrent(c), v = colVal(e), q = e.qty || 1;
-      return `<li><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}</small></span><b>${fmtPrice(v)}${e.own != null ? ' <span class="own-tag" title="Eigener Wert">eigen</span>' : isTp(cur) ? " " + usTag : warnTag(priceWarn(cur))}</b></li>`;
+      return `<li data-col-show="${e.id}" role="button" tabindex="0" title="Zur Karte springen"><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}</small></span><b>${fmtPrice(v)}${e.own != null ? ' <span class="own-tag" title="Eigener Wert">eigen</span>' : isTp(cur) ? " " + usTag : warnTag(priceWarn(cur))}</b></li>`;
     }).join("")}</ol>
     ${ranked.length > 10 ? `<button type="button" class="arch-btn" data-col-rank-all>${colRankAll ? "Nur Top 10" : `Alle ${ranked.length} anzeigen`}</button>` : ""}` : "";
   if (unranked.length) rankBox.innerHTML += `<div class="qwarn warn-dup">⚠ Nicht im Ranking, weil der Cardmarket-Preis unsicher ist: ${unranked.map((e) => `<button type="button" class="link-btn" data-col-jump="${e.id}">${esc(e.card.n)} (${esc(e.card.set)} Nr. ${esc(e.card.no)})</button>`).join(", ")}. Bei der Karte „Eigener Wert“ eintragen, dann erscheint sie hier.</div>`;
@@ -2280,6 +2286,16 @@ async function colChart(qs) {
   plot.addEventListener("pointerleave", leave);
 }
 
+// Zur Karte in der Liste springen und sie kurz hervorheben
+function colShow(id) {
+  const el = document.getElementById(`col-e-${id}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.remove("col-flash");
+  void el.offsetWidth;
+  el.classList.add("col-flash");
+}
+
 function colCsv(entries) {
   const num = (v) => (v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","));
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -2329,12 +2345,18 @@ function colInit() {
   });
   document.getElementById("col-rank").addEventListener("click", (ev) => {
     if (ev.target.closest("[data-col-rank-all]")) { colRankAll = !colRankAll; renderCollection(); }
+    const show = ev.target.closest("[data-col-show]");
+    if (show) return colShow(show.dataset.colShow);
     const j = ev.target.closest("[data-col-jump]");
     if (j) {
       const el = document.getElementById(`col-e-${j.dataset.colJump}`);
       el?.scrollIntoView({ behavior: "smooth", block: "center" });
       el?.querySelector('[data-col-f="own"]')?.focus({ preventScroll: true });
     }
+  });
+  document.getElementById("col-rank").addEventListener("keydown", (ev) => {
+    const show = ev.target.closest("[data-col-show]");
+    if (show && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); colShow(show.dataset.colShow); }
   });
   document.getElementById("col-perf").addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-col-sort]");
