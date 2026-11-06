@@ -51,6 +51,7 @@ Zuletzt aktualisiert: 05.11.2026
 - TCGplayer-Ersatzpreise (in € umgerechnet) für Sets ohne Cardmarket-Preise
 - Preis-Hinweise: „⚠ unsicher“, wenn zwei Karten eines Sets dasselbe Cardmarket-Produkt haben (Datenfehler bei TCGdex, z. B. Arbok Expedition Nr. 3/35; ca. 1.400 ältere Karten, 2 aktuelle), „⚠ schwankt“, wenn Ø 7 und Ø 30 Tage um Faktor ≥ 1,6 abweichen (ab 5 €). Erkennung im Browser.
 - Sammlung: Zustand (MT–PO; Cardmarket-Link mit `minCondition`, laut Cardmarket nicht offiziell dokumentiert) und „Eigener Wert“ (zählt statt Ø 30 für Wert, Ranking, Gewinn; Performance bleibt Marktpreis). Unsichere Preise zählen erst mit eigenem Wert.
+- Sammlung: Einkaufspreis 0 = „gezogen“ (ganzer Wert ist Gewinn, eigene Zeile im Wertkasten; Prozent nur für gekaufte Karten)
 - Sammlung: Ranking „Wertvollste Karten“ (Top 10, alle aufklappbar, Ø 30 Tage pro Stück) und Sortierung „Wert“
 
 - Sammlung: Performance Tag/Woche/Monat/Jahr, „Beste Performer“, ★-Markierung, Sortierung
