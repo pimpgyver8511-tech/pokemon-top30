@@ -2542,13 +2542,27 @@ function impMatch(ix, { lang, setId, setName, no, name, url }) {
 
 function impRows(format, raw) {
   if (format === "dex") {
-    return raw.filter((r) => Number(r.Quantity) > 0).map((r) => {
+    // Dex: Typ "collection" ist der eigentliche Besitz; Listen/Ordner (Typ "standard…") verweisen auf
+    // dieselben Karten. Deshalb je Karte+Variante eine Zeile: Anzahl aus der Sammlung, Listen als Ordner.
+    const groups = new Map();
+    for (const r of raw) {
+      if (!(Number(r.Quantity) > 0)) continue;
+      const k = `${r.Id}|${r.Variant}`;
+      (groups.get(k) ?? groups.set(k, []).get(k)).push(r);
+    }
+    return [...groups.values()].map((rs) => {
+      const coll = rs.filter((r) => r.Type === "collection");
+      const r = coll[0] ?? rs[0];
       const id = /^(.*)-([^-]+)$/.exec(r.Id);
+      const qty = coll.length ? coll.reduce((n, x) => n + Number(x.Quantity), 0) : Math.max(...rs.map((x) => Number(x.Quantity)));
+      const home = [...new Set(coll.map((x) => x.Category).filter(Boolean))];
+      const lists = [...new Set(rs.filter((x) => x.Type !== "collection").map((x) => x.Category).filter(Boolean))];
+      const notes = [...new Set(rs.flatMap((x) => [1, 2, 3, 4, 5].map((i) => x[`Note ${i}`]).filter(Boolean)))];
       return {
         lang: IMP_LANG[r.Locale] ?? null, setId: id?.[1] ?? "", setName: r.Set, no: (r.Number.split("/")[0] || id?.[2] || ""),
-        name: r.Name, qty: Math.max(1, Math.round(Number(r.Quantity))), variant: r.Variant && r.Variant !== "Normal" ? r.Variant : "",
-        folder: r.Category || "", note: [1, 2, 3, 4, 5].map((i) => r[`Note ${i}`]).filter(Boolean).join(" · "),
-        key: `dex|${r.Type}|${r.Category}|${r.Id}|${r.Variant}`, label: `${r.Set} · ${r.Number} · ${r.Name}${r.Variant && r.Variant !== "Normal" ? ` (${r.Variant})` : ""}`,
+        name: r.Name, qty: Math.max(1, Math.round(qty)), variant: r.Variant && r.Variant !== "Normal" ? r.Variant : "",
+        home: home[0] ?? lists[0] ?? "", lists, folder: [...home, ...lists].join(", "), note: notes.join(" · "),
+        key: `dex2|${r.Id}|${r.Variant}`, label: `${r.Set} · ${r.Number} · ${r.Name}${r.Variant && r.Variant !== "Normal" ? ` (${r.Variant})` : ""}`,
       };
     });
   }
@@ -2584,8 +2598,13 @@ async function impLoadFile(file) {
   const ix = impIndex();
   const results = rows.map((r) => ({ r, ...impMatch(ix, r) }));
   const cats = new Map();
-  for (const x of results) cats.set(x.r.folder, (cats.get(x.r.folder) ?? 0) + x.r.qty);
-  colImport = { format, results, cats, off: new Set(), unsure: true, name: file.name };
+  const lists = new Map();
+  for (const x of results) {
+    const h = x.r.home ?? x.r.folder;
+    cats.set(h, (cats.get(h) ?? 0) + x.r.qty);
+    for (const l of x.r.lists ?? []) lists.set(l, (lists.get(l) ?? 0) + 1);
+  }
+  colImport = { format, results, cats, lists, off: new Set(), unsure: true, name: file.name };
   impRender();
 }
 
@@ -2595,7 +2614,7 @@ function impRender() {
   const box = document.getElementById("col-import");
   const im = colImport;
   if (!im) { box.hidden = true; return; }
-  const use = im.results.filter((x) => !im.off.has(x.r.folder));
+  const use = im.results.filter((x) => !im.off.has(x.r.home ?? x.r.folder));
   const ok = use.filter((x) => x.how === "sicher"), unsure = use.filter((x) => x.how === "unsicher"), miss = use.filter((x) => !x.c);
   const take = [...ok, ...(im.unsure ? unsure : [])];
   const pieces = take.reduce((s, x) => s + x.r.qty, 0);
@@ -2609,8 +2628,9 @@ function impRender() {
       <div><b>${n(miss.length)}</b><span>nicht gefunden</span></div>
       <div><b>${fmtPrice(value)}</b><span>Wert (Ø 30 Tage)</span></div>
     </div>
-    ${im.cats.size > 1 || [...im.cats.keys()][0] ? `<fieldset class="imp-cats"><legend>Ordner übernehmen</legend>${[...im.cats].map(([k, q]) =>
+    ${im.cats.size > 1 || [...im.cats.keys()][0] ? `<fieldset class="imp-cats"><legend>${im.format === "dex" ? "Sammlungen übernehmen" : "Ordner übernehmen"}</legend>${[...im.cats].map(([k, q]) =>
       `<label><input type="checkbox" data-imp-cat="${esc(k)}"${im.off.has(k) ? "" : " checked"}> ${esc(k || "ohne Ordner")} <small>(${n(q)})</small></label>`).join("")}</fieldset>` : ""}
+    ${im.lists?.size ? `<p class="quick-hint">Karten in Dex-Listen (${[...im.lists].map(([k, n]) => `${esc(k)}: ${n.toLocaleString("de-DE")}`).join(", ")}) werden nicht doppelt gezählt: Sie stehen einmal in der Sammlung, die Liste wird als Ordner an der Karte vermerkt.</p>` : ""}
     ${unsure.length ? `<label class="imp-opt"><input type="checkbox" id="imp-unsure"${im.unsure ? " checked" : ""}> Unsichere Treffer auch übernehmen (nur über Name und Nummer gefunden)</label>` : ""}
     <p class="quick-hint">Gleiche Einträge aus einem früheren Import werden aktualisiert, nicht doppelt angelegt. Der Preis aus der Datei wird nicht übernommen, es zählt der Cardmarket-Preis der App${im.format === "dex" ? "; Kaufpreise enthält der Dex-Export nicht" : ""}.</p>
     <div class="arch-actions">
@@ -2625,8 +2645,20 @@ async function impCommit() {
   const im = colImport;
   const btn = document.getElementById("imp-go");
   btn.disabled = true; btn.textContent = "Wird übernommen …";
-  const take = im.results.filter((x) => !im.off.has(x.r.folder) && x.c && (x.how === "sicher" || im.unsure));
-  const existing = new Map((await colAll()).filter((e) => e.srcKey).map((e) => [e.srcKey, e]));
+  const take = im.results.filter((x) => !im.off.has(x.r.home ?? x.r.folder) && x.c && (x.how === "sicher" || im.unsure));
+  const existing = new Map();
+  const stale = [];
+  for (const e of await colAll()) {
+    if (!e.srcKey) continue;
+    const parts = e.srcKey.split("|");
+    // Erster Dex-Import (vor 06.11. mittags): eine Zeile je Liste -> Listen-Einträge waren doppelt
+    if (parts[0] === "dex" && parts.length >= 5) {
+      const k = `dex2|${parts.at(-2)}|${parts.at(-1)}`;
+      if (parts[1] === "collection") existing.set(k, e); else stale.push([k, e]);
+    } else existing.set(e.srcKey, e);
+  }
+  const keys = new Set(take.map((x) => x.r.key));
+  const remove = stale.filter(([k]) => keys.has(k)).map(([, e]) => e.id);
   const now = new Date().toISOString();
   let added = 0, updated = 0, id = Date.now() * 100;
   const list = take.map((x) => {
@@ -2647,6 +2679,7 @@ async function impCommit() {
       const tx = db.transaction("sammlung", "readwrite");
       const st = tx.objectStore("sammlung");
       for (const e of list) st.put(e);
+      for (const k of remove) st.delete(k);
       tx.oncomplete = res; tx.onerror = () => rej(tx.error);
     });
   } catch (err) {
@@ -2658,7 +2691,7 @@ async function impCommit() {
   colImport = null;
   document.getElementById("col-import").hidden = true;
   const msg = document.getElementById("col-msg");
-  msg.textContent = `Import fertig: ${added.toLocaleString("de-DE")} neu, ${updated.toLocaleString("de-DE")} aktualisiert.`;
+  msg.textContent = `Import fertig: ${added.toLocaleString("de-DE")} neu, ${updated.toLocaleString("de-DE")} aktualisiert${remove.length ? `, ${remove.length.toLocaleString("de-DE")} doppelte aus einem früheren Import entfernt` : ""}.`;
   msg.hidden = false;
   colLimit = COL_PAGE;
   renderCollection();
