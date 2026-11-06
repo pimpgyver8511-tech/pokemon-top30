@@ -86,6 +86,13 @@ function pickPrice(cm) {
   return null;
 }
 
+// Reverse-Holo-Preis zusätzlich, wenn es auch einen normalen Preis gibt (Felder "-holo" bei Cardmarket)
+function pickReverse(cm) {
+  if (!cm || !(isNum(cm.avg30) || isNum(cm.avg7))) return null;
+  if (!isNum(cm["avg30-holo"]) && !isNum(cm["avg7-holo"])) return null;
+  return { avg30: round(cm["avg30-holo"]), avg7: round(cm["avg7-holo"]) };
+}
+
 function cardmarketUrl(idProduct, name) {
   if (idProduct) return `https://www.cardmarket.com/de/Pokemon/Products?idProduct=${idProduct}`;
   return `https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=${encodeURIComponent(name)}`;
@@ -192,6 +199,7 @@ async function buildSet(set, fallback = null) {
     const res = await getLocalized(`cards/${encodeURIComponent(brief.id)}`);
     const card = res?.data ?? brief;
     let price = pickPrice(card.pricing?.cardmarket);
+    let rev = pickReverse(card.pricing?.cardmarket);
     let idProduct = card.pricing?.cardmarket?.idProduct;
     let image = card.image ?? brief.image;
     // Englische Variante: für den englischen Namen (Schnellsuche) und falls
@@ -201,6 +209,7 @@ async function buildSet(set, fallback = null) {
       const en = await getJson(`${API}/en/cards/${encodeURIComponent(brief.id)}`);
       enName = en?.name ?? null;
       price ??= pickPrice(en?.pricing?.cardmarket);
+      rev ??= pickReverse(en?.pricing?.cardmarket);
       idProduct ??= en?.pricing?.cardmarket?.idProduct;
       image ??= en?.image;
     }
@@ -223,6 +232,7 @@ async function buildSet(set, fallback = null) {
       thumb: imgs?.thumb ?? null,
       large: imgs?.large ?? null,
       ...(price ?? {}),
+      ...(rev && price?.variant !== "Reverse Holo" ? { rev30: rev.avg30, rev7: rev.avg7 } : {}),
       url,
     };
   });
@@ -230,7 +240,7 @@ async function buildSet(set, fallback = null) {
   const top = priced
     .sort((a, b) => b.avg30 - a.avg30)
     .slice(0, TOP_N)
-    .map(({ hasPrice, enName, avg1, low, ...c }) => c);
+    .map(({ hasPrice, enName, avg1, low, rev30, rev7, ...c }) => c);
   console.log(`${set.name} (${set.id}): ${priced.length} Karten mit Preis, Top ${top.length}`);
   return {
     id: set.id,
@@ -368,6 +378,8 @@ function toSearchData(builtSets, tag) {
       if (c.rarity) row.r = c.rarity;
       if (c.hasPrice) Object.assign(row, { a1: c.avg1, a7: c.avg7, a30: c.avg30, t: c.trend, lo: c.low });
       if (c.variant) row.v = c.variant;
+      if (c.rev30) row.r30 = c.rev30;
+      if (c.rev7) row.r7 = c.rev7;
       if (c.src === "tcgplayer") Object.assign(row, { x: "tp", usd: c.usd, tu: c.tpUrl });
       if (c.pn) row.pn = c.pn;
       if (c.thumb) row.img = c.thumb;

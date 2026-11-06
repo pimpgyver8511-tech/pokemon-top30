@@ -129,6 +129,18 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .own-tag { display: inline-block; font-size: .62rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; background: var(--ink); color: var(--bg); vertical-align: 2px; }
 .col-pulled { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--bg) 25%, transparent); }
 .col-pulled b { font-size: .95rem; }
+.col-var { font-size: .7rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--ink); vertical-align: 2px; }
+.col-import { display: grid; gap: 10px; }
+.imp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.imp-stats div { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.imp-stats b { display: block; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.imp-stats span { font-size: .78rem; color: var(--muted); }
+.imp-cats { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.imp-cats legend { font-weight: 700; margin-bottom: 4px; }
+.imp-opt { font-size: .9rem; }
+.imp-go { background: var(--accent) !important; color: var(--surface) !important; border-color: var(--accent) !important; }
+.imp-miss summary { cursor: pointer; font-weight: 700; }
+.imp-miss ul { margin: 6px 0 0; padding-left: 1.2em; max-height: 260px; overflow: auto; font-size: .85rem; }
 .col-edit select { font: inherit; font-size: .9rem; padding: 5px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; box-sizing: border-box; }
 .col-edit .col-cond { grid-column: span 2; }
 .us-tag { display: inline-block; font-size: .62rem; font-weight: 800; letter-spacing: .04em; padding: 1px 4px; border-radius: 3px; background: var(--accent); color: var(--surface); vertical-align: 2px; }
@@ -464,8 +476,11 @@ html { scroll-behavior: smooth; }
         <button type="button" id="col-backup">Sicherung speichern</button>
         <button type="button" id="col-restore">Sicherung einlesen</button>
         <button type="button" id="col-csv">Als CSV exportieren</button>
+        <button type="button" id="col-import-btn">CSV importieren</button>
         <input type="file" id="col-file" accept="application/json,.json" hidden>
+        <input type="file" id="imp-file" accept=".csv,text/csv,text/plain" hidden>
       </div>
+      <div id="col-import" class="col-chart col-import" hidden></div>
       <p class="quick-hint" id="col-msg" hidden></p>
       <datalist id="col-grades"><option value="PSA 10"><option value="PSA 9"><option value="PSA 8"><option value="BGS 10"><option value="BGS 9.5"><option value="CGC 10"><option value="CGC 9.5"></datalist>
       <div id="col-list" class="arch-list"></div>
@@ -1689,7 +1704,7 @@ async function archThumb(dataUrl) {
 function archCardInfo(c) {
   const set = quickData.sets[c.s];
   return { i: c.i, n: c.n, e: c.e ?? null, no: c.no, set: set?.name ?? "", off: set?.off ?? null, L: c.L ?? null, r: c.r ?? null,
-    a7: c.a7 ?? null, a30: c.a30 ?? null, lo: c.lo ?? null, u: c.u, img: c.img ?? null, p: c.p ?? null };
+    a7: c.a7 ?? null, a30: c.a30 ?? null, r30: c.r30 ?? null, lo: c.lo ?? null, u: c.u, img: c.img ?? null, p: c.p ?? null };
 }
 
 async function archUpdateCount() {
@@ -1830,7 +1845,7 @@ function archMatch(e, q) {
       : fold(`${rec.pokemon_de ?? ""} ${rec.pokemon_en ?? ""} ${rec.card_name ?? ""}`).split(" ").map((t) => speciesAlias.get(t)).filter(Boolean);
     if (!q.species.every((id) => ids.includes(id))) return false;
   }
-  const hay = fold([c?.n, c?.e, c?.set, c?.r, rec.pokemon_de, rec.pokemon_en, rec.card_name, rec.set_hint].filter(Boolean).join(" "));
+  const hay = fold([c?.n, c?.e, c?.set, c?.r, rec.pokemon_de, rec.pokemon_en, rec.card_name, rec.set_hint, e.variant, e.folder, e.note].filter(Boolean).join(" "));
   if (q.num != null) {
     const no = c ? normNo(c.no) : normNo(String(rec.number ?? "").split("/")[0]);
     if (no === q.num) { if (q.total != null && c?.off && c.off !== q.total) return false; }
@@ -2077,14 +2092,18 @@ function colBtn(c) {
 }
 
 const colNum = (v) => { const n = Number(String(v ?? "").replace(/[€\s]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".")); return v === "" || v == null || !Number.isFinite(n) ? null : n; };
-const colNow = (e) => archCurrent(e.card)?.a30 ?? null;            // Marktpreis (für Verlauf und Performance)
+const colNow = (e) => { const c = archCurrent(e.card); return c ? impPrice(c, e.variant) : null; }; // Marktpreis (Verlauf, Performance)
+const colKey = (e) => (e.variant === "Reverse Holo" ? `${e.card.i}|rh` : e.card.i);
+const COL_PAGE = 60;
+let colLimit = COL_PAGE;   // so viele Karten werden in der Liste gezeigt, Rest per "Weitere anzeigen"
+let colOrder = [];         // Reihenfolge der zuletzt gezeigten Liste (für Sprünge aus dem Ranking)
 const colVal = (e) => (e.own != null ? e.own : archCurrent(e.card)?._dup ? null : colNow(e)); // zählt für Wert, Ranking, Gewinn
 
 // Sammlungswert und Preis jeder Karte einmal pro Preistag merken (Verlaufskurve und Performance)
 async function colSnapshot(total, paid, n, entries) {
   if (!quickData?.updated || asiaState === "loading" || oldState === "loading") return;
   const prices = {};
-  for (const e of entries) { const v = colNow(e); if (v != null) prices[e.card.i] = v; }
+  for (const e of entries) { const v = colNow(e); if (v != null) prices[colKey(e)] = v; }
   try { await valPut({ d: quickData.updated.slice(0, 10), v: Math.round(total * 100) / 100, paid, n, p: prices }); } catch {}
 }
 
@@ -2100,7 +2119,7 @@ const fmtDay = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("de-DE", { d
 function colPerf(e, now, hist, today) {
   const out = {};
   if (now == null || !today) return out;
-  const pts = [{ d: e.at.slice(0, 10), v: e.card.a30 }, ...hist.map((h) => ({ d: h.d, v: h.p?.[e.card.i] }))]
+  const pts = [{ d: e.at.slice(0, 10), v: impPrice(e.card, e.variant) }, ...hist.map((h) => ({ d: h.d, v: h.p?.[colKey(e)] }))]
     .filter((x) => x.v != null && x.d < today).sort((a, b) => a.d.localeCompare(b.d));
   if (!pts.length) return out;
   for (const [k, , n] of PERIODS) {
@@ -2183,7 +2202,7 @@ async function renderCollection() {
   rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage bzw. eigener Wert, pro Stück</small></h3>
     <ol class="col-rank">${ranked.slice(0, RANK_N).map((e, i) => {
       const c = e.card, cur = archCurrent(c), v = colVal(e), q = e.qty || 1;
-      return `<li data-col-show="${e.id}" role="button" tabindex="0" title="Zur Karte springen"><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}${e.buy === 0 ? " · gezogen" : ""}</small></span><b>${fmtPrice(v)}${e.own != null ? ' <span class="own-tag" title="Eigener Wert">eigen</span>' : isTp(cur) ? " " + usTag : warnTag(priceWarn(cur))}</b></li>`;
+      return `<li data-col-show="${e.id}" role="button" tabindex="0" title="Zur Karte springen"><span class="col-rank-i">${i + 1}.</span><span class="col-rank-n">${esc(c.n)}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}<small>${esc(c.set)} · Nr. ${esc(c.no)}${e.variant ? ` · ${esc(e.variant)}` : ""}${e.folder && e.folder !== "Meine Sammlung" ? ` · ${esc(e.folder)}` : ""}${q > 1 ? ` · ${q} Stück = ${fmtPrice(v * q)}` : ""}${e.buy === 0 ? " · gezogen" : ""}</small></span><b>${fmtPrice(v)}${e.own != null ? ' <span class="own-tag" title="Eigener Wert">eigen</span>' : isTp(cur) ? " " + usTag : warnTag(priceWarn(cur))}</b></li>`;
     }).join("")}</ol>
     ${ranked.length > 10 ? `<button type="button" class="arch-btn" data-col-rank-all>${colRankAll ? "Nur Top 10" : `Alle ${ranked.length} anzeigen`}</button>` : ""}` : "";
   if (unranked.length) rankBox.innerHTML += `<div class="qwarn warn-dup">⚠ Nicht im Ranking, weil der Cardmarket-Preis unsicher ist: ${unranked.map((e) => `<button type="button" class="link-btn" data-col-jump="${e.id}">${esc(e.card.n)} (${esc(e.card.set)} Nr. ${esc(e.card.no)})</button>`).join(", ")}. Bei der Karte „Eigener Wert“ eintragen, dann erscheint sie hier.</div>`;
@@ -2217,8 +2236,10 @@ async function renderCollection() {
     return;
   }
   if (!entries.length) { box.innerHTML = '<div class="status">Keine Karte in der Sammlung passt zur Suche.</div>'; return; }
-  box.innerHTML = entries.map((e) => {
-    const c = e.card, cur = archCurrent(c), q = e.qty || 1, now = cur?.a30 ?? null, val = colVal(e);
+  colOrder = entries.map((e) => e.id);
+  const more = entries.length - colLimit;
+  box.innerHTML = entries.slice(0, colLimit).map((e) => {
+    const c = e.card, cur = archCurrent(c), q = e.qty || 1, now = colNow(e), val = colVal(e);
     const img = e.thumb || c.img;
     const ownTxt = e.own != null ? e.own.toFixed(2).replace(".", ",") : "";
     const pic = img ? `<img class="arch-thumb" loading="lazy" src="${esc(img)}" alt="${esc(c.n)}">` : '<span class="arch-thumb no-img">?</span>';
@@ -2227,8 +2248,10 @@ async function renderCollection() {
     const isTop = PERIODS.some(([k]) => top[k]?.[0] === e);
     return `<article class="arch-item col-item${isTop ? " col-star" : ""}" id="col-e-${e.id}">${pic}
       <div class="qbody">
-        <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}</div>
+        <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.grade ? ` <span class="col-grade">${esc(e.grade)}</span>` : ""}${e.variant ? ` <span class="col-var">${esc(e.variant)}</span>` : ""}</div>
         <div class="qmeta">${set}</div>
+        ${e.folder || e.note ? `<div class="qmeta">${e.folder ? `Ordner: <b>${esc(e.folder)}</b>` : ""}${e.folder && e.note ? " · " : ""}${e.note ? `Notiz: ${esc(e.note)}` : ""}</div>` : ""}
+        ${e.variant && e.variant !== "Reverse Holo" ? '<div class="qmeta">Preis gilt für die normale Version, für diese Variante gibt es keinen eigenen Cardmarket-Durchschnitt.</div>' : ""}
         <div class="qprices">
           ${e.own != null ? priceCell("Eigener Wert / Stück", e.own, true) : ""}${priceCell(isTp(cur) ? "US-Preis heute (€)" : "Ø 30 heute", now, e.own == null)}${priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, val != null ? val * q : null) : ""}${e.buy === 0 ? '<div class="qprice"><span>Bezahlt</span><b>gezogen</b></div>' : e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
         </div>
@@ -2251,7 +2274,7 @@ async function renderCollection() {
             : `<button type="button" class="arch-btn" data-col-ask="${e.id}">Entfernen</button>`}
         </div>
       </div></article>`;
-  }).join("");
+  }).join("") + (more > 0 ? `<button type="button" class="more-btn" id="col-more">Weitere ${Math.min(COL_PAGE, more)} anzeigen (${colLimit.toLocaleString("de-DE")} von ${entries.length.toLocaleString("de-DE")})</button>` : "");
 }
 
 // Wertverlauf als Linie (ein Punkt pro Preistag), mit Tooltip beim Antippen / Überfahren
@@ -2308,9 +2331,16 @@ async function colChart(qs) {
 }
 
 // Zur Karte in der Liste springen und sie kurz hervorheben
-function colShow(id) {
-  const el = document.getElementById(`col-e-${id}`);
-  if (!el) return;
+async function colShow(id) {
+  let el = document.getElementById(`col-e-${id}`);
+  if (!el) {
+    const i = colOrder.indexOf(Number(id));
+    if (i < 0) return;
+    colLimit = Math.ceil((i + 1) / COL_PAGE) * COL_PAGE;
+    await renderCollection();
+    el = document.getElementById(`col-e-${id}`);
+    if (!el) return;
+  }
   el.scrollIntoView({ behavior: "smooth", block: "start" });
   el.classList.remove("col-flash");
   void el.offsetWidth;
@@ -2320,11 +2350,11 @@ function colShow(id) {
 function colCsv(entries) {
   const num = (v) => (v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","));
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Zustand", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Eigener Wert / Stück", "Wert gesamt", "Gewinn / Verlust", "Preis-Hinweis", "Hinzugefügt", "Cardmarket"];
+  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Zustand", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Eigener Wert / Stück", "Wert gesamt", "Gewinn / Verlust", "Preis-Hinweis", "Hinzugefügt", "Cardmarket", "Variante", "Ordner", "Notiz"];
   const rows = entries.map((e) => {
     const c = e.card, cur = archCurrent(c), n = e.qty || 1, now = cur?.a30 ?? null, val = colVal(e);
     return [c.n, c.e, c.set, c.no, BADGE[c.L ?? "intl"], c.r === "None" ? "" : c.r, n, e.grade, e.cond, num(e.buy), num(now), num(cur?.a7 ?? null), num(e.own),
-      num(val != null ? val * n : null), num(val != null && e.buy != null ? (val - e.buy) * n : null), priceWarn(cur)?.tag ?? "", fmtDate(e.at), c.u].map(q).join(";");
+      num(val != null ? val * n : null), num(val != null && e.buy != null ? (val - e.buy) * n : null), priceWarn(cur)?.tag ?? "", fmtDate(e.at), c.u, e.variant ?? "", e.folder ?? "", e.note ?? ""].map(q).join(";");
   });
   return "﻿" + [head.map(q).join(";"), ...rows].join("\r\n");
 }
@@ -2342,7 +2372,7 @@ function colDownload(blob, name) {
 function colInit() {
   const list = document.getElementById("col-list");
   let t;
-  document.getElementById("col-search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(renderCollection, 120); });
+  document.getElementById("col-search").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { colLimit = COL_PAGE; renderCollection(); }, 120); });
   list.addEventListener("change", async (ev) => {
     const f = ev.target.closest("[data-col-f]");
     if (!f) return;
@@ -2358,6 +2388,7 @@ function colInit() {
     renderCollection();
   });
   list.addEventListener("click", async (ev) => {
+    if (ev.target.closest("#col-more")) { colLimit += COL_PAGE; return renderCollection(); }
     const ask = ev.target.closest("[data-col-ask]");
     if (ask) { colDelAsk = Number(ask.dataset.colAsk); return renderCollection(); }
     if (ev.target.closest("[data-col-del-no]")) { colDelAsk = null; return renderCollection(); }
@@ -2414,7 +2445,239 @@ function colInit() {
     msg.hidden = false;
     renderCollection();
   });
+  impInit();
   colRefresh();
+}
+
+// ---------- CSV-Import in die Sammlung (Dex-Export und eigene CSV) ----------
+let colImport = null; // { format, rows, results, cats } der geladenen Datei
+
+// Datei lesen: UTF-16 (Dex) oder UTF-8, Trennzeichen ; oder ,
+function csvDecode(buf) {
+  const b = new Uint8Array(buf);
+  if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder("utf-16le").decode(b.subarray(2));
+  if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder("utf-16be").decode(b.subarray(2));
+  const t = new TextDecoder("utf-8").decode(b);
+  return t.charCodeAt(0) === 0xfeff ? t.slice(1) : t;
+}
+function csvParse(text) {
+  const first = text.slice(0, text.indexOf("\n") + 1 || text.length);
+  const sep = (first.match(/;/g) ?? []).length >= (first.match(/,/g) ?? []).length ? ";" : ",";
+  const rows = [];
+  let row = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === sep) { row.push(cur); cur = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cur); cur = "";
+      if (row.some((x) => x !== "")) rows.push(row);
+      row = [];
+    } else cur += ch;
+  }
+  row.push(cur);
+  if (row.some((x) => x !== "")) rows.push(row);
+  const head = (rows.shift() ?? []).map((h) => h.trim());
+  return rows.map((r) => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? "").trim()])));
+}
+
+// Set-Kennungen vergleichbar machen: "sv03.5" = "sv35" = "sv3pt5", "jpn_sv9" = "SV9"
+const impSetId = (id) => String(id ?? "").toLowerCase().split(":").pop()
+  .replace(/^(jpn|scn|tch|kor)_/, "").replace(/pt(?=\d)/g, "").replace(/\./g, "").replace(/(\D)0+(\d)/g, "$1$2");
+const impName = (n) => fold(String(n ?? "").replace(/[[\]()]/g, " ").replace(/’/g, "'"));
+const IMP_LANG = { International: null, Japanese: "ja", "Simplified Chinese": "zh-cn", "Traditional Chinese": "zh-tw", Korean: "ko" };
+const IMP_LANG_OWN = { "DE/EN": null, JP: "ja", KR: "ko", CN: "zh" };
+
+function impIndex() {
+  const bySet = new Map(), bySid = new Map(), bySname = new Map(), byUrl = new Map();
+  quickData.cards.forEach((c) => {
+    const k = `${c.s}|${normNo(c.no)}`;
+    (bySet.get(k) ?? bySet.set(k, []).get(k)).push(c);
+    if (/idProduct=/.test(c.u ?? "")) byUrl.set(c.u, c);
+  });
+  quickData.sets.forEach((st, i) => {
+    const L = st.L ? (st.L.startsWith("zh") ? st.L : st.L) : null;
+    const add = (m, k) => (m.get(k) ?? m.set(k, []).get(k)).push(i);
+    add(bySid, `${L}|${impSetId(st.id)}`);
+    for (const n of [st.name, st.ne]) if (n) add(bySname, `${L}|${impName(n)}`);
+  });
+  return { bySet, bySid, bySname, byUrl };
+}
+
+// Eine Zeile einer Karte zuordnen: Set-Kennung + Nummer, sonst Set-Name + Nummer, sonst Suche
+function impMatch(ix, { lang, setId, setName, no, name, url }) {
+  const L = lang && lang.startsWith("zh") ? lang : lang;
+  const langs = L === "zh" ? ["zh-cn", "zh-tw"] : [L];
+  if (url && ix.byUrl.has(url)) return { c: ix.byUrl.get(url), how: "sicher" };
+  const nn = normNo(no);
+  const pick = (setIdx) => {
+    const hits = setIdx.flatMap((s) => ix.bySet.get(`${s}|${nn}`) ?? []);
+    if (!hits.length) return null;
+    const same = hits.filter((c) => [c.n, c.e].some((x) => x && (impName(x) === impName(name) || impName(x).includes(impName(name)) || impName(name).includes(impName(x)))));
+    return (same.length ? same : hits)[0];
+  };
+  for (const l of langs) {
+    if (setId) {
+      let sid = impSetId(setId);
+      let c = pick(ix.bySid.get(`${l}|${sid}`) ?? []);
+      // Trainer- und Galar-Galerie gehören bei uns zum Hauptset ("swsh11tg" -> "swsh11")
+      if (!c && /(tg|gg)$/.test(sid)) c = pick(ix.bySid.get(`${l}|${sid.slice(0, -2)}`) ?? []);
+      if (c) return { c, how: "sicher" };
+    }
+    if (setName) {
+      const c = pick(ix.bySname.get(`${l}|${impName(setName)}`) ?? []);
+      if (c) return { c, how: "sicher" };
+    }
+  }
+  // Notlösung: Name + Nummer suchen, Sprache beachten
+  const want = L === "ja" ? "ja" : L === "ko" ? "ko" : L ? "zh" : "intl";
+  const hit = quickSearch(`${name} ${String(no).split("/")[0]}`).list.find((c) => groupOf(c) === want);
+  if (hit && [hit.n, hit.e].some((x) => x && impName(x) === impName(name))) return { c: hit, how: "unsicher" };
+  return { c: null, how: null };
+}
+
+function impRows(format, raw) {
+  if (format === "dex") {
+    return raw.filter((r) => Number(r.Quantity) > 0).map((r) => {
+      const id = /^(.*)-([^-]+)$/.exec(r.Id);
+      return {
+        lang: IMP_LANG[r.Locale] ?? null, setId: id?.[1] ?? "", setName: r.Set, no: (r.Number.split("/")[0] || id?.[2] || ""),
+        name: r.Name, qty: Math.max(1, Math.round(Number(r.Quantity))), variant: r.Variant && r.Variant !== "Normal" ? r.Variant : "",
+        folder: r.Category || "", note: [1, 2, 3, 4, 5].map((i) => r[`Note ${i}`]).filter(Boolean).join(" · "),
+        key: `dex|${r.Type}|${r.Category}|${r.Id}|${r.Variant}`, label: `${r.Set} · ${r.Number} · ${r.Name}${r.Variant && r.Variant !== "Normal" ? ` (${r.Variant})` : ""}`,
+      };
+    });
+  }
+  // Eigene CSV (Export dieser App)
+  return raw.filter((r) => r.Karte).map((r) => ({
+    lang: IMP_LANG_OWN[r.Sprache] ?? null, setId: "", setName: r.Set, no: r.Nummer, name: r["Englischer Name"] || r.Karte, url: r.Cardmarket,
+    qty: Math.max(1, Math.round(Number(r.Anzahl) || 1)), variant: r.Variante || "", folder: r.Ordner || "", note: r.Notiz || "",
+    buy: colNum(r["Kaufpreis / Stück"]), own: colNum(r["Eigener Wert / Stück"]), grade: r.Grad || "", cond: r.Zustand || "",
+    key: `own|${r.Cardmarket}|${r.Set}|${r.Nummer}|${r.Variante || ""}|${r.Ordner || ""}`, label: `${r.Set} · ${r.Nummer} · ${r.Karte}`,
+  }));
+}
+
+async function impLoadFile(file) {
+  const box = document.getElementById("col-import");
+  box.hidden = false;
+  box.innerHTML = '<div class="status">Datei wird gelesen …</div>';
+  let raw;
+  try { raw = csvParse(csvDecode(await file.arrayBuffer())); } catch (err) {
+    box.innerHTML = `<div class="status">Die Datei konnte nicht gelesen werden (${esc(err.message)}).</div>`; return;
+  }
+  const h = new Set(Object.keys(raw[0] ?? {}));
+  const format = ["Locale", "Set", "Id", "Number", "Name", "Quantity"].every((k) => h.has(k)) ? "dex"
+    : ["Karte", "Set", "Nummer", "Anzahl"].every((k) => h.has(k)) ? "own" : null;
+  if (!format) {
+    box.innerHTML = '<div class="status">Format nicht erkannt. Unterstützt: Export aus der Dex-App und die CSV dieser App („Als CSV exportieren“).</div>'; return;
+  }
+  box.innerHTML = '<div class="status">Kartendaten werden geladen, gleich geht es los …</div>';
+  quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+  await quickLoading;
+  for (let i = 0; i < 120 && (asiaState === "loading" || oldState === "loading"); i++) await new Promise((r) => setTimeout(r, 500));
+  if (!quickData) { box.innerHTML = '<div class="status">Die Kartendaten sind nicht verfügbar. Bitte später erneut versuchen.</div>'; return; }
+  const rows = impRows(format, raw);
+  const ix = impIndex();
+  const results = rows.map((r) => ({ r, ...impMatch(ix, r) }));
+  const cats = new Map();
+  for (const x of results) cats.set(x.r.folder, (cats.get(x.r.folder) ?? 0) + x.r.qty);
+  colImport = { format, results, cats, off: new Set(), unsure: true, name: file.name };
+  impRender();
+}
+
+const impPrice = (c, variant) => (variant === "Reverse Holo" && c.r30 ? c.r30 : c.a30 ?? null);
+
+function impRender() {
+  const box = document.getElementById("col-import");
+  const im = colImport;
+  if (!im) { box.hidden = true; return; }
+  const use = im.results.filter((x) => !im.off.has(x.r.folder));
+  const ok = use.filter((x) => x.how === "sicher"), unsure = use.filter((x) => x.how === "unsicher"), miss = use.filter((x) => !x.c);
+  const take = [...ok, ...(im.unsure ? unsure : [])];
+  const pieces = take.reduce((s, x) => s + x.r.qty, 0);
+  const value = take.reduce((s, x) => s + (x.c._dup ? 0 : impPrice(x.c, x.r.variant) ?? 0) * x.r.qty, 0);
+  const n = (v) => v.toLocaleString("de-DE");
+  box.hidden = false;
+  box.innerHTML = `<h3>Import: ${esc(im.name)} <small>${im.format === "dex" ? "Dex-Export" : "CSV dieser App"}</small></h3>
+    <div class="imp-stats">
+      <div><b>${n(ok.length)}</b><span>sicher erkannt</span></div>
+      <div><b>${n(unsure.length)}</b><span>unsicher</span></div>
+      <div><b>${n(miss.length)}</b><span>nicht gefunden</span></div>
+      <div><b>${fmtPrice(value)}</b><span>Wert (Ø 30 Tage)</span></div>
+    </div>
+    ${im.cats.size > 1 || [...im.cats.keys()][0] ? `<fieldset class="imp-cats"><legend>Ordner übernehmen</legend>${[...im.cats].map(([k, q]) =>
+      `<label><input type="checkbox" data-imp-cat="${esc(k)}"${im.off.has(k) ? "" : " checked"}> ${esc(k || "ohne Ordner")} <small>(${n(q)})</small></label>`).join("")}</fieldset>` : ""}
+    ${unsure.length ? `<label class="imp-opt"><input type="checkbox" id="imp-unsure"${im.unsure ? " checked" : ""}> Unsichere Treffer auch übernehmen (nur über Name und Nummer gefunden)</label>` : ""}
+    <p class="quick-hint">Gleiche Einträge aus einem früheren Import werden aktualisiert, nicht doppelt angelegt. Der Preis aus der Datei wird nicht übernommen, es zählt der Cardmarket-Preis der App${im.format === "dex" ? "; Kaufpreise enthält der Dex-Export nicht" : ""}.</p>
+    <div class="arch-actions">
+      <button type="button" id="imp-go" class="imp-go"${take.length ? "" : " disabled"}>${n(take.length)} Einträge (${n(pieces)} Karten) übernehmen</button>
+      <button type="button" id="imp-cancel">Abbrechen</button>
+    </div>
+    ${miss.length ? `<details class="imp-miss"><summary>${n(miss.length)} nicht gefunden – diese bitte von Hand suchen</summary><ul>${miss.slice(0, 300).map((x) => `<li>${esc(x.r.label)}${x.r.qty > 1 ? ` · ${x.r.qty}×` : ""}</li>`).join("")}${miss.length > 300 ? `<li>… und ${n(miss.length - 300)} weitere</li>` : ""}</ul></details>` : ""}
+    ${unsure.length ? `<details class="imp-miss"><summary>${n(unsure.length)} unsicher</summary><ul>${unsure.slice(0, 300).map((x) => `<li>${esc(x.r.label)} → ${esc(quickData.sets[x.c.s]?.name ?? "")} Nr. ${esc(x.c.no)}</li>`).join("")}</ul></details>` : ""}`;
+}
+
+async function impCommit() {
+  const im = colImport;
+  const btn = document.getElementById("imp-go");
+  btn.disabled = true; btn.textContent = "Wird übernommen …";
+  const take = im.results.filter((x) => !im.off.has(x.r.folder) && x.c && (x.how === "sicher" || im.unsure));
+  const existing = new Map((await colAll()).filter((e) => e.srcKey).map((e) => [e.srcKey, e]));
+  const now = new Date().toISOString();
+  let added = 0, updated = 0, id = Date.now() * 100;
+  const list = take.map((x) => {
+    const old = existing.get(x.r.key);
+    const card = archCardInfo(x.c);
+    const base = { card, qty: x.r.qty, variant: x.r.variant || undefined, folder: x.r.folder || undefined, note: x.r.note || undefined, srcKey: x.r.key };
+    if (x.r.buy != null) base.buy = x.r.buy;
+    if (x.r.own != null) base.own = x.r.own;
+    if (x.r.grade) base.grade = x.r.grade;
+    if (x.r.cond) base.cond = x.r.cond;
+    if (old) { updated++; return { ...old, ...base }; }
+    added++;
+    return { id: id++, at: now, buy: null, grade: "", thumb: null, ...base };
+  });
+  try {
+    const db = await archDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction("sammlung", "readwrite");
+      const st = tx.objectStore("sammlung");
+      for (const e of list) st.put(e);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (err) {
+    btn.disabled = false; btn.textContent = "Erneut versuchen";
+    document.getElementById("col-msg").textContent = `Import fehlgeschlagen (${err.message}).`;
+    document.getElementById("col-msg").hidden = false;
+    return;
+  }
+  colImport = null;
+  document.getElementById("col-import").hidden = true;
+  const msg = document.getElementById("col-msg");
+  msg.textContent = `Import fertig: ${added.toLocaleString("de-DE")} neu, ${updated.toLocaleString("de-DE")} aktualisiert.`;
+  msg.hidden = false;
+  colLimit = COL_PAGE;
+  renderCollection();
+}
+
+function impInit() {
+  const file = document.getElementById("imp-file");
+  document.getElementById("col-import-btn").addEventListener("click", () => file.click());
+  file.addEventListener("change", () => { const f = file.files?.[0]; file.value = ""; if (f) impLoadFile(f); });
+  const box = document.getElementById("col-import");
+  box.addEventListener("change", (ev) => {
+    const cat = ev.target.closest("[data-imp-cat]");
+    if (cat) { cat.checked ? colImport.off.delete(cat.dataset.impCat) : colImport.off.add(cat.dataset.impCat); impRender(); }
+    if (ev.target.id === "imp-unsure") { colImport.unsure = ev.target.checked; impRender(); }
+  });
+  box.addEventListener("click", (ev) => {
+    if (ev.target.id === "imp-go") impCommit();
+    if (ev.target.id === "imp-cancel") { colImport = null; box.hidden = true; }
+  });
 }
 
 // ---------- Grading-Suche: passende Karte finden, dann PriceCharting / eBay-Verkäufe öffnen ----------

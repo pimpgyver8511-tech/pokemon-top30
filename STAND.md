@@ -51,6 +51,8 @@ Zuletzt aktualisiert: 05.11.2026
 - TCGplayer-Ersatzpreise (in € umgerechnet) für Sets ohne Cardmarket-Preise
 - Preis-Hinweise: „⚠ unsicher“, wenn zwei Karten eines Sets dasselbe Cardmarket-Produkt haben (Datenfehler bei TCGdex, z. B. Arbok Expedition Nr. 3/35; ca. 1.400 ältere Karten, 2 aktuelle), „⚠ schwankt“, wenn Ø 7 und Ø 30 Tage um Faktor ≥ 1,6 abweichen (ab 5 €). Erkennung im Browser.
 - Sammlung: Zustand (MT–PO; Cardmarket-Link mit `minCondition`, laut Cardmarket nicht offiziell dokumentiert) und „Eigener Wert“ (zählt statt Ø 30 für Wert, Ranking, Gewinn; Performance bleibt Marktpreis). Unsichere Preise zählen erst mit eigenem Wert.
+- **CSV-Import in die Sammlung (seit 06.11.):** Dex-Export (UTF-16, Semikolon; Zeilen mit Quantity > 0) und die eigene CSV der App. Zuordnung über Set-Kennung (sv03.5 = sv35 = sv3pt5, jpn_/scn_-Präfix, tg/gg zum Hauptset) + Nummer, sonst Set-Name (auch englisch) + Nummer, sonst Suche ("unsicher"); eigene CSV zuerst über den Cardmarket-Link. Vorschau mit Ordner-Auswahl (Dex-Kategorie), nicht gefundenen Karten; erneuter Import aktualisiert statt zu verdoppeln (srcKey). Dex-Preis wird nicht übernommen (Marktwert, kein Kaufpreis). Test mit echtem Export: 6.840 sicher, 20 unsicher, 83 nicht gefunden von 6.943.
+- Sammlung: Variante (Reverse Holo mit eigenem Cardmarket-Preis r30/r7 aus den Tagesdaten), Ordner und Notiz; Liste zeigt 60 Karten, Rest über "Weitere anzeigen".
 - Sammlung: Einkaufspreis 0 = „gezogen“ (ganzer Wert ist Gewinn, eigene Zeile im Wertkasten; Prozent nur für gekaufte Karten)
 - Sammlung: Ranking „Wertvollste Karten“ (Top 10, alle aufklappbar, Ø 30 Tage pro Stück) und Sortierung „Wert“
 
