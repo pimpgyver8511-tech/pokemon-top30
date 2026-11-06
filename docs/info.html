@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Was die App Pokémon Top 30 kann und was man für alle Funktionen braucht.">
+<link rel="icon" href="icons/icon-192.png">
+<title>Pokémon Top 30 – Was die App kann</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: dunkles Kopfband wie in der App, darunter eine ruhige Lesespalte; Funktionen als Raster, Voraussetzungen als Tabelle */
+:root {
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --ink: #171a24;
+  --muted: #5d6475;
+  --line: #dde0e8;
+  --accent: #1f4fd1;
+  --foil: #f2c230;
+  --band: #171a24;
+  --band-ink: #f3f4f7;
+  --tag: #e8ecf9;
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141b; --surface: #1b1e28; --ink: #eceef4; --muted: #9aa1b3; --line: #2c3040;
+    --accent: #8aa8ff; --foil: #f2c230; --band: #0b0d12; --band-ink: #eceef4; --tag: #252a3b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12141b; --surface: #1b1e28; --ink: #eceef4; --muted: #9aa1b3; --line: #2c3040;
+  --accent: #8aa8ff; --foil: #f2c230; --band: #0b0d12; --band-ink: #eceef4; --tag: #252a3b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--font-body); }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 980px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 112%; line-height: 1.15; text-wrap: balance; margin: 0; }
+
+/* Kopf */
+.band { background: var(--band); color: var(--band-ink); border-bottom: 5px solid var(--foil); }
+.band .wrap { padding-block: 36px 32px; display: grid; gap: 14px; }
+.band h1 { font-size: clamp(2.1rem, 7vw, 3.2rem); font-weight: 800; }
+.band h1 span { color: var(--foil); }
+.lead { max-width: 62ch; font-size: 1.08rem; margin: 0; opacity: .92; }
+.linkrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.url { font-family: var(--font-body); font-weight: 700; background: color-mix(in srgb, var(--band-ink) 10%, transparent); color: var(--band-ink); padding: 8px 12px; border-radius: 6px; user-select: all; overflow-wrap: anywhere; min-width: 0; }
+.copy { font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 6px; border: 0; background: var(--foil); color: #171a24; cursor: pointer; }
+.copy.open { text-decoration: none; background: transparent; color: var(--band-ink); border: 2px solid var(--foil); }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 0; padding: 0; list-style: none; font-size: .92rem; opacity: .85; }
+
+main .wrap { padding-block: 34px 48px; display: grid; gap: 44px; }
+section { display: grid; gap: 16px; }
+section > h2 { font-size: 1.6rem; font-weight: 800; }
+.intro { margin: 0; color: var(--muted); max-width: 65ch; }
+
+/* Funktionen */
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+.feat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.feat h3 { font-size: 1.12rem; font-weight: 750; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.feat ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; }
+.feat p { margin: 0; }
+.need { font-family: var(--font-body); font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: var(--tag); color: var(--ink); white-space: nowrap; }
+.need.key { background: var(--foil); color: #171a24; }
+
+/* Voraussetzungen */
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; }
+th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--font-display); font-stretch: 112%; font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-weight: 700; width: 30%; }
+
+/* Schnellstart */
+.steps { margin: 0; padding-left: 1.4em; display: grid; gap: 10px; max-width: 70ch; }
+.steps li::marker { font-family: var(--font-display); font-weight: 800; color: var(--accent); }
+.costs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.cost { border-left: 4px solid var(--foil); padding: 4px 0 4px 12px; }
+.cost b { display: block; font-family: var(--font-display); font-stretch: 112%; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.cost span { color: var(--muted); font-size: .92rem; }
+
+.notes { display: grid; gap: 10px; margin: 0; padding-left: 1.1em; max-width: 72ch; }
+footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+
+</head>
+<body>
+<header class="band">
+  <div class="wrap">
+    <h1>Pokémon <span>Top 30</span></h1>
+    <p class="lead">Kartenpreise von Cardmarket auf einen Blick, eine Schnellsuche über rund 41.500 Karten, Bilderkennung für Live-Auktionen und die eigene Sammlung mit täglich aktuellem Wert.</p>
+    <div class="linkrow">
+      <span class="url" id="app-url">https://pimpgyver8511-tech.github.io/pokemon-top30/</span>
+      <button type="button" class="copy" id="copy">Link kopieren</button>
+      <a class="copy open" href="./">App öffnen</a>
+    </div>
+    <ul class="facts">
+      <li>Kostenlos, ohne Anmeldung</li>
+      <li>Preise jeden Morgen neu</li>
+      <li>Läuft im Browser und als App</li>
+    </ul>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <section aria-labelledby="h-features">
+      <h2 id="h-features">Was die App kann</h2>
+      <div class="features">
+        <article class="feat">
+          <h3>Sets und Rangliste <span class="need">nur Link</span></h3>
+          <ul>
+            <li>Die 30 teuersten Karten jedes Sets der letzten 5 Jahre, dazu Celebrations (25 Jahre) und 30 Jahre</li>
+            <li>Gesamtrangliste über alle Sets und die größten Preis-Aufsteiger</li>
+            <li>Preise Ø 7 und Ø 30 Tage, sortierbar, mit Link zu Cardmarket</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Schnellsuche <span class="need">nur Link</span></h3>
+          <ul>
+            <li>Rund 41.500 Karten ab 1996: deutsch/englisch, japanisch, koreanisch, chinesisch, Promos</li>
+            <li>Pokémon-Name in jeder Sprache, dahinter die Sprache: „Dragonite deutsch“, „Glurak japanisch“</li>
+            <li>Alle Preise sofort: Ø 1 / 7 / 30 Tage, Trend, günstigstes Angebot</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Bilderkennung <span class="need key">API-Schlüssel</span></h3>
+          <ul>
+            <li>Screenshot oder Foto einer Karte: die App erkennt sie und zeigt den Preis</li>
+            <li>Bild aus der Galerie, mit der Kamera, über das Teilen-Menü oder am PC per Drag &amp; Drop</li>
+            <li>Am PC „Bildschirm mitlesen“: erkennt Karten direkt aus einem laufenden Whatnot-Stream</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Mithören <span class="need">Mikrofon</span></h3>
+          <ul>
+            <li>Hört bei deutschen Live-Streams mit und sucht automatisch die genannte Karte</li>
+            <li>Filtert Smalltalk heraus, erkennt auch ähnlich klingende Namen</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Archiv <span class="need">nur Link</span></h3>
+          <ul>
+            <li>Jede erkannte Karte mit Foto, Preis beim Scan und Preis heute</li>
+            <li>Gesamtwert, Suche, CSV-Export; falsch erkannte Karten neu zuordnen</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Meine Sammlung <span class="need">nur Link</span></h3>
+          <ul>
+            <li>Karten aus Archiv oder Suche übernehmen, mit Anzahl, Kaufpreis (0 € = selbst gezogen), Grad und Zustand</li>
+            <li>Wert der Sammlung täglich neu, Gewinn/Verlust, Wertverlauf als Kurve</li>
+            <li>Ranking der wertvollsten Karten und beste Performer pro Tag, Woche, Monat, Jahr</li>
+            <li>Eigenen Wert eintragen, z. B. für gegradete Karten; Sicherung als Datei</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Grading <span class="need">nur Link</span></h3>
+          <ul>
+            <li>Für gegradete Karten (PSA, BGS, CGC) direkt zu PriceCharting und zu verkauften eBay-Angeboten</li>
+          </ul>
+        </article>
+        <article class="feat">
+          <h3>Preis-Hinweise <span class="need">nur Link</span></h3>
+          <ul>
+            <li>„⚠ unsicher“ bei Datenfehlern, „⚠ schwankt“ bei stark schwankenden Preisen</li>
+            <li>Fehlt ein Cardmarket-Preis, steht der US-Preis von TCGplayer, in Euro umgerechnet und mit „US“ markiert</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-needs">
+      <h2 id="h-needs">Was du brauchst</h2>
+      <p class="intro">Die meisten Funktionen laufen mit dem Link allein. Für Bilderkennung und Mithören kommt je eine Sache dazu.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th scope="col">Funktion</th><th scope="col">Was du brauchst</th></tr></thead>
+          <tbody>
+            <tr><td>Preise, Suche, Archiv, Sammlung, Grading</td><td>Nur den Link und einen aktuellen Browser. Keine Anmeldung, keine Kosten.</td></tr>
+            <tr><td>Bilderkennung (Bild, Foto, Teilen, Bildschirm)</td><td>Einen eigenen Claude-API-Schlüssel von Anthropic (siehe unten). Kostet pro erkannter Karte wenige Cent.</td></tr>
+            <tr><td>Mithören</td><td>Chrome auf Android und die Erlaubnis fürs Mikrofon. In Firefox geht Mithören nicht.</td></tr>
+            <tr><td>Screenshots über das Teilen-Menü</td><td>Chrome auf Android und die Seite als App installieren (Chrome-Menü → „App installieren“ bzw. „Zum Startbildschirm“).</td></tr>
+            <tr><td>Bildschirm mitlesen (Whatnot am PC)</td><td>Chrome oder Edge am PC, dazu den API-Schlüssel.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-start">
+      <h2 id="h-start">So richtest du die Bilderkennung ein</h2>
+      <ol class="steps">
+        <li>Unter <b>console.anthropic.com</b> ein Konto anlegen, etwas Guthaben aufladen und am besten gleich ein monatliches Ausgabenlimit setzen, z. B. 5 $.</li>
+        <li>Dort unter „API Keys“ einen neuen Schlüssel erstellen. Er beginnt mit „sk-ant-“.</li>
+        <li>In der App auf <b>Suche</b> → <b>Einstellungen</b> tippen, den Schlüssel einfügen und speichern.</li>
+        <li>Wählen: <b>Schnell</b> für Live-Auktionen (etwa 2 Sekunden) oder <b>Genau</b> für schwierige Bilder (etwa 4 Sekunden).</li>
+      </ol>
+      <div class="costs">
+        <div class="cost"><b>unter 0,1 Cent</b><span>pro Bild im Modus „Schnell“</span></div>
+        <div class="cost"><b>ca. 2–3 Cent</b><span>pro Bild im Modus „Genau“</span></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-notes">
+      <h2 id="h-notes">Gut zu wissen</h2>
+      <ul class="notes">
+        <li><b>Deine Daten bleiben bei dir.</b> Sammlung, Archiv und API-Schlüssel liegen nur im Browser deines Geräts. Wer den Link öffnet, sieht nur die Preise, nie die Sammlung eines anderen. Löschst du die Browserdaten, ist auch die Sammlung weg, deshalb ab und zu „Sicherung speichern“.</li>
+        <li><b>Cardmarket-Preise sind Durchschnitte</b> über alle Zustände und alle europäischen Sprachen; deutsch und englisch kosten also dasselbe. Für gegradete oder besonders gut erhaltene Karten den eigenen Wert in der Sammlung eintragen.</li>
+        <li><b>Den Schlüssel nicht weitergeben.</b> Jeder nutzt seinen eigenen, die Kosten laufen über das eigene Anthropic-Konto.</li>
+        <li>Auf dem iPhone ist die App bisher nicht getestet. Preise, Suche und Sammlung sollten im Browser laufen, Mithören und Teilen-Menü eher nicht.</li>
+      </ul>
+    </section>
+
+    <footer>Preise von Cardmarket (über TCGdex, pokemontcg.io und Cardmarkets Preisliste), Ersatzpreise von TCGplayer, Umrechnung zum Referenzkurs der EZB.</footer>
+  </div>
+</main>
+
+<script>
+document.getElementById("copy").addEventListener("click", async (e) => {
+  const text = document.getElementById("app-url").textContent.trim();
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = "Kopiert";
+  } catch {
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById("app-url"));
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    btn.textContent = "Markiert – jetzt kopieren";
+  }
+  setTimeout(() => { btn.textContent = "Link kopieren"; }, 2500);
+});
+</script>
+
+</body>
+</html>
