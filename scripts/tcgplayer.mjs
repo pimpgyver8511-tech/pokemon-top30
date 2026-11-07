@@ -54,6 +54,7 @@ function nameScore(a, b) {
 }
 
 async function findGroup(set) {
+  if (set.groupId) return (await groups()).find((g) => g.groupId === set.groupId) ?? null;
   if (GROUP_OVERRIDE[set.id]) return (await groups()).find((g) => g.groupId === GROUP_OVERRIDE[set.id]) ?? null;
   const day = String(set.releaseDate ?? "").slice(0, 10);
   let best = null;
@@ -191,7 +192,7 @@ export async function tcgplayerCards(set, fx) {
     })[0];
     const usd = r ? (r.marketPrice > 0 ? r.marketPrice : r.lowPrice) : null;
     cards.push({
-      no: String(num).split("/")[0], name: String(p.name).replace(/\s+-\s+[^-]*$/, ""),
+      no: String(num).split("/")[0], total: Number(String(num).split("/")[1]) || null, name: String(p.name).replace(/\s+-\s+[^-]*$/, ""),
       rarity: p.extendedData?.find((d) => d.name === "Rarity")?.value ?? null, img: p.imageUrl ?? null,
       ...(usd ? { avg30: round(usd / fx.usd), trend: round(usd / fx.usd), low: round(r.lowPrice / fx.usd), avg1: null, avg7: null,
         variant: null, src: "tcgplayer", usd: round(usd), tpUrl: p.url ?? null } : {}),
@@ -199,4 +200,21 @@ export async function tcgplayerCards(set, fx) {
   }
   console.log(`  TCGplayer: Set ${set.id} direkt aus Gruppe ${group.groupId} "${group.name}", ${cards.length} Karten`);
   return cards;
+}
+
+/**
+ * Neue Haupt-Erweiterungen bei TCGplayer ("ME06: Delta Reign"), erschienen in den letzten `days` Tagen
+ * (oder in den nächsten 7). Rückgabe: [{ groupId, code, enName, releaseDate }]
+ */
+export async function recentMainSets(days = 150) {
+  const now = Date.now();
+  const out = [];
+  for (const g of await groups()) {
+    if (g.isSupplemental) continue;
+    const m = /^([A-Z]{2,4}\d{1,2}[a-z]?):\s*(.+)$/.exec(String(g.name));
+    const t = Date.parse(String(g.publishedOn ?? "").slice(0, 10));
+    if (!m || !(t > now - days * 86400000 && t < now + 7 * 86400000)) continue;
+    out.push({ groupId: g.groupId, code: m[1], enName: m[2].trim(), releaseDate: String(g.publishedOn).slice(0, 10) });
+  }
+  return out;
 }

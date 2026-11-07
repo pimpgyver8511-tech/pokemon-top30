@@ -1,7 +1,7 @@
 // Holt die Cardmarket-Preise aller Karten der Haupt- und Spezialsets der
 // letzten 5 Jahre über die TCGdex-API und schreibt die Top 30 pro Set
 // (sortiert nach 30-Tage-Durchschnitt) nach docs/data/.
-import { loadUsdRate, tcgplayerCards, tcgplayerPrices } from "./tcgplayer.mjs";
+import { loadUsdRate, recentMainSets, tcgplayerCards, tcgplayerPrices } from "./tcgplayer.mjs";
 import { cardmarketGuidePrices } from "./cmguide.mjs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -590,28 +590,35 @@ async function applyCardmarketGuide(builtSets) {
 }
 
 // Notlösung, wenn pokemontcg.io ausfällt: Set nur aus TCGplayer bauen
-async function buildFromTcgplayer(id, deName) {
+const mostCommon = (xs) => { const m = new Map(); for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null; };
+
+// Deutsche Namen neuer Sets, solange TCGdex sie noch nicht kennt
+const NEW_SET_DE = { "Delta Reign": "Delta Herrschaft" };
+
+async function buildFromTcgplayer(id, deName, opts = {}) {
   const fx = await usdRate();
-  const meta = PTCG_SET_FALLBACK[id] ?? {};
+  const meta = opts.meta ?? PTCG_SET_FALLBACK[id] ?? {};
   if (!fx) return null;
   let rows = null;
   try {
-    rows = await tcgplayerCards({ id, name: meta.name ?? id, enName: meta.name, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-") }, fx);
+    rows = await tcgplayerCards({ id, name: meta.name ?? id, enName: meta.enName ?? meta.name, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"), groupId: opts.groupId }, fx);
   } catch (err) {
     console.warn(`  TCGplayer nicht erreichbar (${id}): ${err.message}`);
   }
   if (!rows?.length) return null;
   const cards = rows.map((c) => {
     const name = deName(c.name);
-    const { img, ...rest } = c;
-    return { ...rest, hasPrice: isNum(c.avg30), enName: name !== c.name ? c.name : null, id: `${id}-tp-${c.no}-${c.name}`.replace(/[^\w-]+/g, "-"),
+    const { img, total, ...rest } = c;
+    // Neue Sets: Kennung wie bei TCGdex ("me06-141"), damit Sammlungen später ohne Bruch weiterlaufen
+    const cid = opts.tcgdexIds ? `${id}-${c.no}` : `${id}-tp-${c.no}-${c.name}`.replace(/[^\w-]+/g, "-");
+    return { ...rest, hasPrice: isNum(c.avg30), enName: name !== c.name ? c.name : null, id: cid,
       name, thumb: img, large: img, url: cardmarketUrl(null, c.name) };
   });
   const priced = cards.filter((c) => c.hasPrice);
   return {
     id, name: meta.name ?? id, serie: meta.series ?? null, releaseDate: (meta.releaseDate ?? "").replaceAll("/", "-"), logo: null,
     cards: [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, ...c }) => c),
-    allCards: cards, official: meta.printedTotal ?? null, priceSource: "tcgplayer", fx,
+    allCards: cards, official: meta.printedTotal ?? mostCommon(rows.map((c) => c.total).filter(Boolean)), priceSource: "tcgplayer", fx,
   };
 }
 
@@ -683,6 +690,30 @@ async function main() {
     if (built && !built.cards.length) built = await addTcgplayer(built, { id, name: built.name, enName: built.name, releaseDate: built.releaseDate }, makeDeNamer(species));
     if (!built) built = await buildFromTcgplayer(id, makeDeNamer(species));
     if (built?.cards.length) { result.push(built); allSets.push(built); }
+  }
+  // Neue Haupt-Sets, die TCGdex noch nicht kennt (z. B. Delta Herrschaft): direkt aus TCGplayer,
+  // die Cardmarket-Preise kommen danach aus der Preisliste
+  if (await usdRate()) {
+    try {
+      const knownIds = new Set(mainSets.map((st) => st.id));
+      const knownEn = new Set(mainSets.map((st) => foldName(EN_SET_NAMES.get(st.id) ?? st.name)));
+      for (const g of await recentMainSets(150)) {
+        const id = g.code.toLowerCase();
+        if (knownIds.has(id) || knownEn.has(foldName(g.enName)) || result.some((b) => b.id === id)) continue;
+        const prefix = id.replace(/\d.*$/, "");
+        const serie = mainSets.find((st) => st.id.startsWith(prefix))?.serie?.name ?? null;
+        const built = await buildFromTcgplayer(id, makeDeNamer(species), {
+          meta: { name: NEW_SET_DE[g.enName] ?? g.enName, enName: g.enName, series: serie, releaseDate: g.releaseDate }, groupId: g.groupId, tcgdexIds: true,
+        });
+        if (!built?.cards.length) continue;
+        built.enName = g.enName;
+        console.log(`Neues Set ohne TCGdex: ${built.name} (${id}), ${built.allCards.length} Karten von TCGplayer`);
+        result.push(built);
+        allSets.push(built);
+      }
+    } catch (err) {
+      console.warn(`Neue Sets von TCGplayer übersprungen: ${err.message}`);
+    }
   }
   await applyCardmarketGuide(result);
   result.sort((a, b) => (b.releaseDate ?? "").localeCompare(a.releaseDate ?? ""));
