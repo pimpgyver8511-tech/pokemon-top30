@@ -145,7 +145,7 @@ export async function tcgplayerPrices(set, cards, fx) {
     return {
       avg30: round(usd / fx.usd), trend: round(usd / fx.usd), low: round(r.lowPrice / fx.usd),
       avg1: null, avg7: null, variant: r.subTypeName === "Reverse Holofoil" ? "Reverse Holo" : null,
-      src: "tcgplayer", usd: round(usd), tpUrl: x.p.url ?? null, tpName: x.p.name, tpNo: x.num,
+      src: "tcgplayer", usd: round(usd), tpUrl: x.p.url ?? null, tpName: x.p.name, tpNo: x.num, tpImg: x.p.imageUrl ?? null,
     };
   });
   const matched = out.filter(Boolean).length;

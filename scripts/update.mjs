@@ -539,8 +539,9 @@ async function addTcgplayer(built, setInfo, deName = (n) => n) {
   if (!map?.some(Boolean) && !map?.extra?.length) return built;
   need.forEach((c, i) => {
     if (!map[i]) return;
-    const { tpName, tpNo, ...p } = map[i];
+    const { tpName, tpNo, tpImg, ...p } = map[i];
     Object.assign(c, p, { hasPrice: true });
+    if (!c.thumb && tpImg) { c.thumb = tpImg; c.large = tpImg.replace(/_200w(\.\w+)$/, "_in_1000x1000$1"); }
     // Reprints (z. B. Klassische Sammlung) tragen die Originalnummer: für Suche und Bilderkennung merken
     if (tpNo && normNo(String(tpNo).split("/")[0]) !== normNo(c.no)) c.pn = String(tpNo);
   });
@@ -602,8 +603,10 @@ async function repairNewSet(built, set) {
     const count = new Map();
     for (const c of built.allCards) { const p = pid(c); if (p) count.set(p, (count.get(p) ?? 0) + 1); }
     const bad = new Set(built.allCards.filter((c) => !c.hasPrice || (pid(c) && count.get(pid(c)) > 1)));
-    if (!bad.size) return built;
-    console.warn(`${set.name} (${set.id}): ${bad.size} Karten ohne eindeutigen Cardmarket-Preis bei TCGdex – Preisliste/TCGplayer`);
+    const noImg = built.allCards.filter((c) => !c.thumb).length;
+    if (!bad.size && !noImg) return built;
+    if (bad.size) console.warn(`${set.name} (${set.id}): ${bad.size} Karten ohne eindeutigen Cardmarket-Preis bei TCGdex – Preisliste/TCGplayer`);
+    if (noImg) console.warn(`${set.name} (${set.id}): ${noImg} Karten ohne Bild bei TCGdex – Bilder von TCGplayer`);
     const fx = await usdRate();
     const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`).catch(() => null);
     const names = built.allCards.map((c) => ({ no: c.no, name: c.enName ?? c.name }));
@@ -612,10 +615,15 @@ async function repairNewSet(built, set) {
       try { tp = await tcgplayerPrices({ id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate }, names, fx); }
       catch (err) { console.warn(`  TCGplayer nicht erreichbar (${set.id}): ${err.message}`); }
     }
-    try { cm = await cardmarketGuidePrices(names.map((c, i) => ({ name: c.name, date: set.releaseDate, ref: tp?.[i]?.avg30 ?? null }))); }
-    catch (err) { console.warn(`  Cardmarket-Preisliste nicht erreichbar: ${err.message}`); }
-    let fromCm = 0, fromTp = 0, left = 0;
+    if (bad.size) {
+      try { cm = await cardmarketGuidePrices(names.map((c, i) => ({ name: c.name, date: set.releaseDate, ref: tp?.[i]?.avg30 ?? null }))); }
+      catch (err) { console.warn(`  Cardmarket-Preisliste nicht erreichbar: ${err.message}`); }
+    }
+    let fromCm = 0, fromTp = 0, left = 0, imgs = 0;
     built.allCards.forEach((c, i) => {
+      // Bild von TCGplayer, solange TCGdex keins hat (klein 200 px, groß 1000 px)
+      const img = tp?.[i]?.tpImg;
+      if (!c.thumb && img) { c.thumb = img; c.large = img.replace(/_200w(\.\w+)$/, "_in_1000x1000$1"); imgs++; }
       if (!bad.has(c)) return;
       const p = cm?.[i], t = tp?.[i];
       delete c.rev30; delete c.rev7;
@@ -624,7 +632,7 @@ async function repairNewSet(built, set) {
         if (p.amb) c.amb = true;
         fromCm++;
       } else if (t?.avg30) {
-        const { tpName, tpNo, ...rest } = t;
+        const { tpName, tpNo, tpImg, ...rest } = t;
         // Link nicht auf das falsch zugeordnete Produkt, sondern zur Cardmarket-Suche
         Object.assign(c, rest, { hasPrice: true, url: cardmarketUrl(null, c.enName ?? c.name) });
         fromTp++;
@@ -633,7 +641,7 @@ async function repairNewSet(built, set) {
     const priced = built.allCards.filter((c) => c.hasPrice);
     built.cards = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, rev30, rev7, ...c }) => c);
     if (fromTp) { built.priceSource = "mixed"; built.fx = fx; }
-    console.log(`  ${set.name}: ${fromCm} aus der Cardmarket-Preisliste, ${fromTp} TCGplayer, ${left} weiter offen`);
+    console.log(`  ${set.name}: ${fromCm} aus der Cardmarket-Preisliste, ${fromTp} TCGplayer, ${left} weiter offen, ${imgs} Bilder von TCGplayer`);
   } catch (err) {
     console.warn(`  Korrektur für ${set.id} übersprungen: ${err.message}`);
   }
