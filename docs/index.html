@@ -124,6 +124,8 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .warn-tag { display: inline-block; margin-left: 4px; font-size: .66rem; font-weight: 800; padding: 1px 5px; border-radius: 3px; white-space: nowrap; vertical-align: 2px; background: color-mix(in srgb, var(--foil) 35%, var(--surface)); color: var(--ink); cursor: help; }
 .warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
+.warn-tag.warn-amb { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
+.qwarn.warn-amb { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
 .qwarn.warn-dup { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
 .link-btn { font: inherit; padding: 0; border: 0; background: none; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .own-tag { display: inline-block; font-size: .62rem; font-weight: 800; padding: 1px 4px; border-radius: 3px; background: var(--ink); color: var(--bg); vertical-align: 2px; }
@@ -743,6 +745,7 @@ function markShared(cards, setOf, urlOf) {
 function priceWarn(c) {
   if (!c) return null;
   if (c._dup) return { k: "dup", tag: "unsicher", t: "Preis unsicher: Die Datenquelle führt diese und eine zweite Karte des Sets (meist Holo und normale Version) unter demselben Cardmarket-Produkt. Der Preis gilt vermutlich nur für eine davon. In der Sammlung zählt die Karte erst mit eigenem Wert." };
+  if (c.am || c.amb) return { k: "amb", tag: "unsicher", t: "Zuordnung unsicher: Diese Karte gibt es im Set in mehreren Versionen gleichen Namens (z. B. Special Illustration Rare und Hyper Rare), die preislich nah beieinander liegen. Welche Version welchen Cardmarket-Preis hat, ist noch nicht sicher. Bitte über den Cardmarket-Link prüfen." };
   const a7 = c.a7 ?? c.avg7, a30 = c.a30 ?? c.avg30;
   if (a7 && a30 && Math.max(a7, a30) >= 5 && Math.max(a7, a30) / Math.min(a7, a30) >= 1.6) {
     return { k: "swing", tag: "schwankt", t: `Preis schwankt stark: Ø 7 Tage ${fmtPrice(a7)}, Ø 30 Tage ${fmtPrice(a30)}. Einzelne Verkäufe, z. B. von Karten in Top-Zustand, verzerren den Durchschnitt. Am besten auf Cardmarket nach Zustand filtern.` };

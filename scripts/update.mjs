@@ -381,6 +381,7 @@ function toSearchData(builtSets, tag) {
       if (c.rev30) row.r30 = c.rev30;
       if (c.rev7) row.r7 = c.rev7;
       if (c.src === "tcgplayer") Object.assign(row, { x: "tp", usd: c.usd, tu: c.tpUrl });
+      if (c.amb) row.am = 1;
       if (c.pn) row.pn = c.pn;
       if (c.thumb) row.img = c.thumb;
       if (c.large && c.large !== c.thumb) row.big = c.large;
@@ -578,6 +579,7 @@ async function applyCardmarketGuide(builtSets) {
       if (!p) return;
       delete c.src; delete c.usd; delete c.tpUrl;
       Object.assign(c, { avg1: p.avg1, avg7: p.avg7, avg30: p.avg30, trend: p.trend, low: p.low, variant: p.variant, url: cardmarketUrl(p.idProduct), hasPrice: isNum(p.avg30) });
+      if (p.amb) c.amb = true;
     });
     for (const b of group) {
       const priced = b.allCards.filter((c) => c.hasPrice);
@@ -619,10 +621,12 @@ async function repairNewSet(built, set) {
       delete c.rev30; delete c.rev7;
       if (p?.avg30) {
         Object.assign(c, { avg1: p.avg1, avg7: p.avg7, avg30: p.avg30, trend: p.trend, low: p.low, variant: p.variant, url: cardmarketUrl(p.idProduct), hasPrice: true });
+        if (p.amb) c.amb = true;
         fromCm++;
       } else if (t?.avg30) {
         const { tpName, tpNo, ...rest } = t;
-        Object.assign(c, rest, { hasPrice: true });
+        // Link nicht auf das falsch zugeordnete Produkt, sondern zur Cardmarket-Suche
+        Object.assign(c, rest, { hasPrice: true, url: cardmarketUrl(null, c.enName ?? c.name) });
         fromTp++;
       } else left++;
     });

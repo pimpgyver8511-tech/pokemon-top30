@@ -97,13 +97,21 @@ export async function cardmarketGuidePrices(cards, log = console.log) {
     if (idx.length > 1 && idx.some((i) => !(cards[i].ref > 0))) { skipped += idx.length; continue; }
     const cs = [...idx].sort((a, b) => (cards[b].ref ?? 0) - (cards[a].ref ?? 0));
     const ps = [...prods].sort((a, b) => (b.pr?.avg30 ?? b.pr?.trend ?? 0) - (a.pr?.avg30 ?? a.pr?.trend ?? 0));
+    // Liegen gleichnamige Versionen beim Vergleichspreis nah beieinander (unter 25 % Abstand),
+    // ist die Reihenfolge nicht sicher: diese Paare als "mehrdeutig" kennzeichnen
+    const amb = new Set();
+    for (let j = 1; j < cs.length; j++) {
+      const a = cards[cs[j - 1]].ref, b = cards[cs[j]].ref;
+      // nur ab 5 €: bei Cent-Karten ist eine Vertauschung egal
+      if (a > 0 && b > 0 && a / b < 1.25 && a >= 5) { amb.add(cs[j - 1]); amb.add(cs[j]); }
+    }
     cs.forEach((ci, j) => {
       const { p, pr } = ps[j];
       if (!pr?.avg30) return;
       const ref = cards[ci].ref;
       // Plausibel: höchstens Faktor 3 zum Vergleichspreis (Karten unter 2 € großzügiger)
       if (ref > 0 && Math.max(ref, pr.avg30) >= 2 && Math.max(ref, pr.avg30) / Math.min(ref, pr.avg30) > 3) { rejected++; return; }
-      out[ci] = { ...pr, idProduct: p.idProduct };
+      out[ci] = { ...pr, idProduct: p.idProduct, ...(amb.has(ci) ? { amb: true } : {}) };
       paired++;
     });
   }
