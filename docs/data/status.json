@@ -1,6 +1,6 @@
 {
- "updated": "2026-11-08T21:02:35.590Z",
- "seconds": 448,
+ "updated": "2026-11-08T21:43:53.799Z",
+ "seconds": 979,
  "sets": [
   "me06",
   "30th-c",
@@ -39,7 +39,9 @@
  ],
  "warnings": [
   "Delta-Herrschaft (me06): 94 Karten ohne eindeutigen Cardmarket-Preis bei TCGdex – Preisliste/TCGplayer",
+  "Delta-Herrschaft (me06): 141 Karten ohne Bild bei TCGdex – Bilder von TCGplayer",
   "  TCGplayer me06: 3 Karten ohne Zuordnung, z. B. 132 Bubbly Water Energy | 133 Growing Grass Energy | 134 Nitro Fire Energy",
+  "30 Jahre: Klassische Sammlung (30th-c): 30 Karten ohne Bild bei TCGdex – Bilder von TCGplayer",
   "Celebrations: Classic Collection (cel25c): 25 Karten bei pokemontcg.io, aber keine mit Cardmarket-Ø30. Beispiele: Charizard 4: null | Blastoise 2: null",
   "Verborgenes Schicksal Glitzer-Tresor (sma): keine Preise bei TCGdex – versuche pokemontcg.io",
   "XY trainer Kit (Pikachu Libre) (tk-xy-p): keine Preise bei TCGdex – versuche pokemontcg.io",
@@ -67,8 +69,6 @@
   "  pokemontcg.io: kein Set \"XY trainer Kit (Sylveon)\" gefunden",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Sylveon) (2014-03-12)",
   "Nintendo Black Star Promos (np): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/cards?q=set.id%3Anp&page=1&pageSize=250&select=id,number,cardmarket,images: HTTP 500",
-  "  TCGplayer: keine passende Gruppe für Nintendo Black Star Promos (2003-10-01)",
   "Gym Challenge (gym2): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Gym Heroes (gym1): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Miscellaneous Promos (miscp): keine Preise bei TCGdex – versuche pokemontcg.io",
