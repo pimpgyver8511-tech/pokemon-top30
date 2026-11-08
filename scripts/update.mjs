@@ -589,6 +589,53 @@ async function applyCardmarketGuide(builtSets) {
   }
 }
 
+// Neue Sets (bis 120 Tage): TCGdex ordnet anfangs oft mehrere Karten gleichen Namens demselben
+// Cardmarket-Produkt zu (z. B. normale Karte, Special Illustration Rare und Hyper Rare), und manche
+// Karten haben noch keinen Preis. Für diese Karten: Preis aus Cardmarkets Preisliste (Name +
+// Preisreihenfolge, geprüft gegen TCGplayer), sonst TCGplayer umgerechnet.
+async function repairNewSet(built, set) {
+  try {
+    if (!set.releaseDate || Date.parse(set.releaseDate) < Date.now() - 120 * 86400000 || built.priceSource) return built;
+    const pid = (c) => /idProduct=(\d+)/.exec(c.url ?? "")?.[1];
+    const count = new Map();
+    for (const c of built.allCards) { const p = pid(c); if (p) count.set(p, (count.get(p) ?? 0) + 1); }
+    const bad = new Set(built.allCards.filter((c) => !c.hasPrice || (pid(c) && count.get(pid(c)) > 1)));
+    if (!bad.size) return built;
+    console.warn(`${set.name} (${set.id}): ${bad.size} Karten ohne eindeutigen Cardmarket-Preis bei TCGdex – Preisliste/TCGplayer`);
+    const fx = await usdRate();
+    const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`).catch(() => null);
+    const names = built.allCards.map((c) => ({ no: c.no, name: c.enName ?? c.name }));
+    let tp = null, cm = null;
+    if (fx) {
+      try { tp = await tcgplayerPrices({ id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate }, names, fx); }
+      catch (err) { console.warn(`  TCGplayer nicht erreichbar (${set.id}): ${err.message}`); }
+    }
+    try { cm = await cardmarketGuidePrices(names.map((c, i) => ({ name: c.name, date: set.releaseDate, ref: tp?.[i]?.avg30 ?? null }))); }
+    catch (err) { console.warn(`  Cardmarket-Preisliste nicht erreichbar: ${err.message}`); }
+    let fromCm = 0, fromTp = 0, left = 0;
+    built.allCards.forEach((c, i) => {
+      if (!bad.has(c)) return;
+      const p = cm?.[i], t = tp?.[i];
+      delete c.rev30; delete c.rev7;
+      if (p?.avg30) {
+        Object.assign(c, { avg1: p.avg1, avg7: p.avg7, avg30: p.avg30, trend: p.trend, low: p.low, variant: p.variant, url: cardmarketUrl(p.idProduct), hasPrice: true });
+        fromCm++;
+      } else if (t?.avg30) {
+        const { tpName, tpNo, ...rest } = t;
+        Object.assign(c, rest, { hasPrice: true });
+        fromTp++;
+      } else left++;
+    });
+    const priced = built.allCards.filter((c) => c.hasPrice);
+    built.cards = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, rev30, rev7, ...c }) => c);
+    if (fromTp) { built.priceSource = "mixed"; built.fx = fx; }
+    console.log(`  ${set.name}: ${fromCm} aus der Cardmarket-Preisliste, ${fromTp} TCGplayer, ${left} weiter offen`);
+  } catch (err) {
+    console.warn(`  Korrektur für ${set.id} übersprungen: ${err.message}`);
+  }
+  return built;
+}
+
 // Notlösung, wenn pokemontcg.io ausfällt: Set nur aus TCGplayer bauen
 const mostCommon = (xs) => { const m = new Map(); for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null; };
 
@@ -673,6 +720,7 @@ async function main() {
       const en = await getJson(`${API}/en/sets/${encodeURIComponent(set.id)}`);
       built = await addTcgplayer(built, { id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate }, makeDeNamer(species));
     }
+    if (built.cards.length) built = await repairNewSet(built, set);
     allSets.push(built);
     if (built.cards.length) result.push(built);
     else {
