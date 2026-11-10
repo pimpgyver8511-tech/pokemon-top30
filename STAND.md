@@ -27,6 +27,7 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - **Lernen:** „Diese ist es“ merkt sich Erkennung (Name, Nummer, Sprache) → Karte im Browser (`localStorage` „snapLearn“, max. 1000); nur wenn eine Nummer gelesen wurde.
 - **Set-Kürzel:** Erkennung liest `set_code` (z. B. TWM); Sets tragen `ab` (TCGdex `abbreviation.official`, bei TCGplayer-Sets das Gruppen-Kürzel) im Suchtext.
 - **Geteilte Cardmarket-Produkte (alle Sets):** `repairShared` + `resolveSharedProducts`: Versionen derselben Erweiterung und desselben Namens im Cardmarket-Katalog, gepaart nach TCGplayer-Preis, sonst nach Seltenheit (Holo/Sonder > normal). TCGplayer-Gruppe für alte Sets auch über den Namen (±1 Jahr).
+- Ergebnis Reparatur (10.11.): ältere Karten mit geteiltem Produkt 1.399 → 327, aktuelle 2 (Giratina V 130 / VSTAR 201: drei freie VSTAR-Produkte im Katalog, nicht eindeutig), 48 Karten mit „unsicher“ wegen naher Preise. Laufzeit des Tageslaufs jetzt ca. 15–18 Minuten.
 - **eBay verkauft:** Link je Karte in Suche, Archiv und Sammlung, mit Sprache (z. B. „deutsch“, „japanese“).
 - **Fotos bei Cardmarket:** Fotos hängen an Angebotsnummern (marketplace-article-scans.s3.cardmarket.com/<Angebot>/<Angebot>.jpg), Angebote sind nicht frei abrufbar → nicht automatisch erkennbar.
 
