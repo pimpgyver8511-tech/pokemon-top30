@@ -63,7 +63,17 @@ async function findGroup(set) {
     const s = nameScore(String(g.name).replace(/^[^:]{1,8}:\s*/, ""), set.enName ?? set.name);
     if (s >= 0.6 && (!best || s > best[0])) best = [s, g];
   }
-  return best?.[1] ?? null;
+  if (best) return best[1];
+  // Ältere Sets: Erscheinungstag bei TCGplayer oft anders. Dann alle Wörter des TCGplayer-Namens im
+  // Set-Namen ("Expedition" in "Expedition Base Set"), höchstens 1 Jahr Abstand, eindeutig
+  const want = tokens(set.enName ?? set.name);
+  const t = Date.parse(day);
+  const hits = (await groups()).filter((g) => {
+    const gt = [...tokens(String(g.name).replace(/^[^:]{1,8}:\s*/, ""))];
+    const dt = Math.abs(Date.parse(String(g.publishedOn ?? "").slice(0, 10)) - t);
+    return gt.length && gt.every((w) => want.has(w)) && dt < 366 * 86400000;
+  });
+  return hits.length === 1 ? hits[0] : null;
 }
 
 // Kartenname ohne Nummer/Zusatz: "Lugia - 142/103" -> "lugia", "Gengar (Prime)" -> "gengar"
@@ -214,7 +224,7 @@ export async function recentMainSets(days = 150) {
     const m = /^([A-Z]{2,4}\d{1,2}[a-z]?):\s*(.+)$/.exec(String(g.name));
     const t = Date.parse(String(g.publishedOn ?? "").slice(0, 10));
     if (!m || !(t > now - days * 86400000 && t < now + 7 * 86400000)) continue;
-    out.push({ groupId: g.groupId, code: m[1], enName: m[2].trim(), releaseDate: String(g.publishedOn).slice(0, 10) });
+    out.push({ groupId: g.groupId, code: m[1], enName: m[2].trim(), releaseDate: String(g.publishedOn).slice(0, 10), abbr: g.abbreviation || null });
   }
   return out;
 }

@@ -124,6 +124,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .warn-tag { display: inline-block; margin-left: 4px; font-size: .66rem; font-weight: 800; padding: 1px 5px; border-radius: 3px; white-space: nowrap; vertical-align: 2px; background: color-mix(in srgb, var(--foil) 35%, var(--surface)); color: var(--ink); cursor: help; }
 .warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
+.snap-note { font-size: .9rem; }
 .warn-tag.warn-jp { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn.warn-jp { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
 .warn-tag.warn-amb { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
@@ -781,6 +782,16 @@ function cmUrl(u, { lang, cond } = {}) {
 const cmLabel = ({ lang, cond } = {}) => `Cardmarket${[lang && CM_LANG_NAME[lang], cond && COND_CODE[cond] ? `ab ${cond}` : ""].filter(Boolean).map((x, i) => (i ? ", " : " ") + x).join("")}`;
 const unsurePrice = (c) => Boolean(c?._dup || c?._jp);
 
+// Verkaufte eBay-Angebote zu genau dieser Karte und Sprache (eBay-Angebote haben fast immer Fotos)
+const EBAY_LANG = { de: "deutsch", en: "english", fr: "french", it: "italian", es: "spanish", ja: "japanese", ko: "korean", "zh-tw": "chinese", "zh-cn": "chinese" };
+function ebayUrl(c, lang) {
+  const name = c.e || (c.L && c.p?.length ? c.p.map((id) => speciesLabel.get(id)?.en).filter(Boolean).join(" ") : "") || c.n;
+  const no = String(c.pn ?? c.no ?? "").split("/")[0].replace(/^0+(?=\d)/, "");
+  const q = [name, no, EBAY_LANG[lang ?? c.L ?? ""], "pokemon"].filter(Boolean).join(" ");
+  return `https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent(q)}&LH_Sold=1&LH_Complete=1`;
+}
+const ebayLink = (c, lang) => `<a class="cm-link" href="${esc(ebayUrl(c, lang))}" target="_blank" rel="noopener">eBay verkauft${EBAY_LANG[lang ?? c.L ?? ""] ? ` (${CM_LANG_NAME[lang ?? c.L]})` : ""} ↗</a>`;
+
 // Koreanische und chinesische Karten, denen die Datenquelle das Cardmarket-Produkt der
 // japanischen Karte zuordnet: Der Preis ist dann der der japanischen Karte.
 function markJpShared() {
@@ -808,14 +819,14 @@ async function loadQuick() {
     for (const a of aliases) if (!speciesAlias.has(a)) speciesAlias.set(a, id);
   }
   indexCards(all.cards);
-  for (const st of all.sets) st._hay = fold(`${st.name} ${st.ne ?? ""}`);
+  for (const st of all.sets) st._hay = fold(`${st.name} ${st.ne ?? ""} ${st.ab ?? ""}`);
   quickData = all;
   // Asiatische und ältere Karten im Hintergrund nachladen (die aktuelle Suche geht schon)
   asiaState = "loading";
   oldState = "loading";
   const merge = (part) => {
     const off = quickData.sets.length;
-    for (const st of part.sets) { st._hay = fold(`${st.name} ${st.ne ?? ""}`); quickData.sets.push(st); }
+    for (const st of part.sets) { st._hay = fold(`${st.name} ${st.ne ?? ""} ${st.ab ?? ""}`); quickData.sets.push(st); }
     for (const c of part.cards) c.s += off;
     indexCards(part.cards);
     quickData.cards.push(...part.cards);
@@ -893,6 +904,7 @@ function parseQuery(query) {
 
 // Von der Bilderkennung gesetzt: passende Kartenart (z. B. normale Version) in der Trefferliste nach oben
 let rarityPref = null;
+let snapPrefer = null; // { q, id, why }: nach Bildvergleich oder gelernter Korrektur diese Karte zuerst
 const RARITY_BY_VARIANT = {
   normal: /double rare|doppelselten|^rare$|rare holo|holo rare|^selten$|selten, holo|^common$|^uncommon$|gewöhnlich|ungewöhnlich|^promo$/i,
   full_art: /ultra rare|ultra selten|full art/i,
@@ -929,6 +941,7 @@ function quickSearch(query) {
       else { ok = false; break; }
     }
     if (ok && rarityPref && c.r && rarityPref.test(c.r)) score += 4;
+    if (ok && snapPrefer && snapPrefer.q === query && snapPrefer.id === c.i) score += 100;
     if (ok) hits.push([score, c]);
   }
   hits.sort((a, b) => b[0] - a[0] || (b[1].a30 ?? -1) - (a[1].a30 ?? -1));
@@ -1007,7 +1020,7 @@ function renderQuick() {
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
         <div class="qmeta">${meta}</div>
         ${prices}
-        <div class="qfoot">${c.a30 && !isTp(c) ? chip(pct(c.a7, c.a30)) : ""}${c.tu ? `<a class="cm-link" href="${esc(c.tu)}" target="_blank" rel="noopener">TCGplayer ↗</a>` : ""}<a class="cm-link" href="${esc(cmUrl(c.u, { lang: linkLang }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? linkLang : null })} ↗</a>${colBtn(c)}${pickBtn(c)}</div>
+        <div class="qfoot">${c.a30 && !isTp(c) ? chip(pct(c.a7, c.a30)) : ""}${c.tu ? `<a class="cm-link" href="${esc(c.tu)}" target="_blank" rel="noopener">TCGplayer ↗</a>` : ""}<a class="cm-link" href="${esc(cmUrl(c.u, { lang: linkLang }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? linkLang : null })} ↗</a>${ebayLink(c, linkLang)}${colBtn(c)}${pickBtn(c)}</div>
       </div>
     </article>`;
   }).join("");
@@ -1333,6 +1346,7 @@ Felder:
 - card_name: Kartenname genau wie gedruckt.
 - number: Kartennummer wie gedruckt ohne Set-Kürzel, z. B. "199/165", "027", "TG23". Leer, wenn nicht lesbar.
 - set_hint: Set oder Promo-Kürzel, falls erkennbar (z. B. "SVP Promo", "151", "Prismatische Entwicklungen"), sonst leer.
+- set_code: das kleine Set-Kürzel aus 3 Buchstaben unten links neben der Nummer (z. B. "TWM", "PAL", "MEW", "DLR"), nur wenn wirklich lesbar, sonst leer.
 - language: Sprache des Aufdrucks (de, en, ja, ko, zh oder unknown).
 - variant: Art der Karte: "normal" (normale Karte mit Rahmen und Textfeld, auch normale ex/GX/V-Karten), "full_art" (Vollbild-Karte, Pokémon vor einfarbigem/strukturiertem Hintergrund), "illustration" (Vollbild mit Szenen-Illustration, Alt Art, Special/Illustration Rare), "gold" (goldene oder regenbogenfarbene Karte), sonst "unknown".
 - year: Jahr aus der Copyright-Zeile unten auf der Karte (z. B. "2002", "2023"), leer wenn nicht lesbar.
@@ -1348,13 +1362,14 @@ const SNAP_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "language", "variant", "year", "confidence"],
+        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "set_code", "language", "variant", "year", "confidence"],
         properties: {
           pokemon_en: { type: "string" },
           pokemon_de: { type: "string" },
           card_name: { type: "string" },
           number: { type: "string" },
           set_hint: { type: "string" },
+          set_code: { type: "string" },
           language: { type: "string", enum: ["de", "en", "ja", "ko", "zh", "unknown"] },
           variant: { type: "string", enum: ["normal", "full_art", "illustration", "gold", "unknown"] },
           year: { type: "string" },
@@ -1419,6 +1434,79 @@ function snapErrorText(err) {
   return `Fehler bei der Erkennung: ${msg || status}`;
 }
 
+// Gelernte Korrekturen: gleiche Erkennung (Name, Nummer, Sprache) -> die Karte, die du gewählt hast.
+// Nur auf diesem Gerät gespeichert.
+const snapLearnKey = (r) => [fold(r?.card_name || r?.pokemon_de || r?.pokemon_en), normNo(String(r?.number ?? "").split("/")[0]), r?.language ?? ""].join("|");
+const snapLearnOk = (r) => Boolean(normNo(String(r?.number ?? "").split("/")[0])); // nur mit gelesener Nummer
+function snapLearnGet(r) {
+  if (!snapLearnOk(r)) return null;
+  try { return JSON.parse(localStorage.getItem("snapLearn") ?? "{}")[snapLearnKey(r)] ?? null; } catch { return null; }
+}
+function snapLearnSet(r, id) {
+  if (!snapLearnOk(r)) return;
+  try {
+    const m = JSON.parse(localStorage.getItem("snapLearn") ?? "{}");
+    delete m[snapLearnKey(r)];
+    m[snapLearnKey(r)] = id;
+    const keys = Object.keys(m);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 1000))) delete m[k];
+    localStorage.setItem("snapLearn", JSON.stringify(m));
+  } catch {}
+}
+
+// Eine Karte als Treffer setzen: Suche so wählen, dass sie drin ist, und sie ganz nach oben stellen
+function snapPreferCard(c, hit, why) {
+  const inList = hit.query && quickSearch(hit.query).list.some((x) => x.i === c.i);
+  const lang = c.L ? SNAP_LANG_WORD[c.L.startsWith("zh") ? "zh" : c.L] : "";
+  const q = inList ? hit.query : [c.n, normNo(c.no), lang].filter(Boolean).join(" ");
+  snapPrefer = { q, id: c.i, why };
+  document.getElementById("quick-input").value = q;
+  renderQuick();
+  return { query: q, exact: true, why };
+}
+
+// ---------- 1. Bildvergleich: Bei mehreren möglichen Versionen vergleicht Claude das Foto mit den Kartenbildern ----------
+const SNAP_PICK_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["choice", "confidence"],
+  properties: { choice: { type: "integer" }, confidence: { type: "string", enum: ["high", "medium", "low"] } },
+};
+function snapCandidates(hit, first) {
+  if (!hit.query) return [];
+  const list = quickSearch(hit.query).list.filter((c) => c.img && !/PokeAPI\/sprites/.test(c.img)).slice(0, 6);
+  if (list.length < 2) return [];
+  // Nur wenn die gelesene Nummer nicht genau eine Karte trifft (nicht genau getroffen, Nummer
+  // nicht lesbar oder mehrere Karten mit derselben Nummer)
+  const nn = normNo(String(first.number ?? "").split("/")[0]);
+  const sameNo = list.filter((c) => normNo(c.no) === nn || (c.pn && normNo(String(c.pn).split("/")[0]) === nn)).length;
+  return !hit.exact || sameNo !== 1 ? list : [];
+}
+async function snapVisualPick(client, model, img, cands) {
+  const content = [
+    { type: "text", text: "Bild A ist das Foto bzw. der Screenshot der gesuchten Karte:" },
+    { type: "image", source: { type: "base64", media_type: "image/jpeg", data: img.b64 } },
+    { type: "text", text: "Es folgen Kandidaten aus der Kartendatenbank:" },
+  ];
+  cands.forEach((c, i) => {
+    const set = quickData.sets[c.s];
+    content.push({ type: "text", text: `Kandidat ${i + 1}: ${c.e || c.n}, Nr. ${c.no}${set?.off ? "/" + set.off : ""}, Set ${set?.ne || set?.name || ""}, Seltenheit ${c.r || "?"}` });
+    content.push({ type: "image", source: { type: "url", url: c.img } });
+  });
+  content.push({ type: "text", text: "Welcher Kandidat ist genau dieselbe Karte wie Bild A (gleiche Illustration, gleiche Version, gleicher Rahmen, gleiche Nummer)? Sprache und Bildqualität dürfen abweichen. Antworte mit der Nummer des Kandidaten, oder 0, wenn keiner passt." });
+  const params = {
+    model, max_tokens: 2000,
+    output_config: { effort: "low", format: { type: "json_schema", schema: SNAP_PICK_SCHEMA } },
+    ...(model === SNAP_MODELS.fast ? { thinking: { type: "disabled" } } : {}),
+    messages: [{ role: "user", content }],
+  };
+  const res = model === SNAP_MODELS.exact
+    ? await client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
+    : await client.messages.create(params);
+  if (res.stop_reason === "refusal") return null;
+  const out = JSON.parse(res.content.find((b) => b.type === "text")?.text ?? "{}");
+  const c = cands[(out.choice ?? 0) - 1];
+  return c && out.confidence !== "low" ? c : null;
+}
+
 // Aus dem Ergebnis eine Suchanfrage bauen; erst genau, dann schrittweise lockerer
 function snapQueries(card) {
   const name = (card.pokemon_de || card.pokemon_en || card.card_name || "").trim();
@@ -1435,10 +1523,15 @@ function snapQueries(card) {
     .sort((a, b) => b.length - a.length)
     .filter((w) => quickData?.sets.some((st) => st._hay.split(" ").includes(w)));
   const setWord = setWords[0] ?? "";
+  // Set-Kürzel (z. B. "TWM") nur, wenn ein Set genau dieses Kürzel hat
+  const code = fold(card.set_code ?? "").replace(/\s+/g, "");
+  const setCode = code.length >= 3 && quickData?.sets.some((st) => fold(st.ab ?? "") === code) ? code : "";
   // Nur Varianten mit tatsächlich vorhandener Nummer bzw. Set-Wort, sonst würde
   // z. B. [name, sprache, ""] zur lockersten Suche und gewänne zu früh
   // Nummer + Set-Wort zuerst: trennt Reprints (z. B. Klassische Sammlung mit Originalnummer) vom Original
   const out = [
+    setCode && num && [base, lang, num, setCode],
+    setCode && num && [base, num, setCode],
     ...(num ? setWords.map((w) => [base, lang, num, w]) : []),
     num && [base, lang, num],
     setWord && [base, lang, setWord],
@@ -1462,7 +1555,7 @@ function snapApply(card) {
       renderQuick();
       // Genau getroffen nur, wenn die gelesene Nummer in der Suche steckt
       const words = q.split(" ");
-      const setWords = fold(card.set_hint).split(" ").filter((w) => w.length >= 4);
+      const setWords = [...fold(card.set_hint).split(" ").filter((w) => w.length >= 4), fold(card.set_code ?? "")].filter(Boolean);
       // Genau: gelesene Nummer oder ein Set-Wort steckt in der erfolgreichen Suche
       return { query: q, exact: (Boolean(num) && words.includes(num)) || words.some((w) => setWords.includes(w)) };
     }
@@ -1541,15 +1634,42 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
     const needOld = Boolean(year) && year < new Date().getFullYear() - 5;
     for (let i = 0; i < 75 && ((needAsia && asiaState === "loading") || (needOld && oldState === "loading")); i++) await sleep(200);
     const token = ++snapToken;
-    const hit = snapRenderResult(img, cards, secs);
+    snapPrefer = null;
+    let hit = snapRenderResult(img, cards, secs);
+    let chosen = null;
+    // Früher korrigiert? Dann gleich die damals gewählte Karte
+    const learned = snapLearnGet(first);
+    const lc = learned && quickData.cards.find((c) => c.i === learned);
+    if (lc) {
+      chosen = lc;
+      hit = snapPreferCard(lc, hit, "gelernt");
+      snapNote(`✓ Wie bei deiner letzten Korrektur: ${esc(lc.n)}, Nr. ${esc(lc.no)} (${esc(quickData.sets[lc.s]?.name ?? "")}).`);
+    } else if (snapGet("snapMode", "exact") === "exact") {
+      // Mehrere mögliche Versionen: Foto mit den Kartenbildern vergleichen
+      const cands = snapCandidates(hit, first);
+      if (cands.length) {
+        snapNote('<span class="spinner" aria-hidden="true"></span> Mehrere Versionen möglich, vergleiche mit den Kartenbildern …');
+        try {
+          const c = await snapVisualPick(client, model, img, cands);
+          if (token === snapToken && c) {
+            chosen = c;
+            hit = snapPreferCard(c, hit, "bild");
+            snapNote(`✓ Per Bildvergleich bestätigt: ${esc(c.n)}, Nr. ${esc(c.no)} (${esc(quickData.sets[c.s]?.name ?? "")}).`);
+          } else snapNote("Bildvergleich ohne eindeutiges Ergebnis. Bitte unten die passende Karte mit „Diese ist es“ wählen.");
+        } catch (err) {
+          console.warn("Bildvergleich übersprungen", err);
+          snapNote("");
+        }
+      }
+    }
     // Aus dem Stream: dieselbe Karte direkt hintereinander nur einmal archivieren
-    if (!opts.fromScreen || hit.query !== lastAutoQuery) await archSaveScan(img.url, first, hit, photoAt);
+    if (!opts.fromScreen || hit.query !== lastAutoQuery) await archSaveScan(img.url, first, hit, photoAt, chosen);
     if (opts.fromScreen) lastAutoQuery = hit.query ?? "";
     // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
     if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
       (async () => {
         for (let i = 0; i < 100 && (asiaState === "loading" || oldState === "loading"); i++) await sleep(300);
-        if (token === snapToken && snapApply(first).exact) {
+        if (token === snapToken && !snapPrefer && snapApply(first).exact) {
           const better = snapRenderResult(img, cards, secs);
           const top = better.query ? quickSearch(better.query).list[0] : null;
           if (top) archSetCard(top, true);
@@ -1564,6 +1684,15 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
   } finally {
     snapBusy = false;
   }
+}
+
+// Zusatzzeile unter dem Erkennungsergebnis (Bildvergleich, gelernte Korrektur)
+function snapNote(html) {
+  const box = document.getElementById("snap-result");
+  let el = box.querySelector(".snap-note");
+  if (!el) { el = document.createElement("p"); el.className = "snap-msg snap-note"; box.append(el); }
+  el.innerHTML = html;
+  el.hidden = !html;
 }
 
 function snapRenderResult(img, cards, secs) {
@@ -1750,9 +1879,9 @@ async function archUpdateCount() {
 }
 
 // Nach einer Erkennung: Eintrag anlegen
-async function archSaveScan(imgUrl, first, hit, photoAt = null) {
+async function archSaveScan(imgUrl, first, hit, photoAt = null, chosen = null) {
   try {
-    const top = hit.query ? quickSearch(hit.query).list[0] : null;
+    const top = chosen ?? (hit.query ? quickSearch(hit.query).list[0] : null);
     const entry = {
       id: Date.now(), at: new Date().toISOString(), photoAt: photoAt ? new Date(photoAt).toISOString() : null, thumb: await archThumb(imgUrl),
       rec: first, query: hit.query ?? "", exact: Boolean(hit.exact), card: top ? archCardInfo(top) : null,
@@ -1864,6 +1993,7 @@ async function renderArchive() {
           ${colArch.has(e.id) ? '<button type="button" class="arch-btn col-in" data-col-go>✓ In Sammlung</button>' : `<button type="button" class="arch-btn" data-col-arch="${e.id}">+ Sammlung</button>`}
           <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}" data-arch-id="${e.id}">Andere Karte?</button>
           <a class="cm-link" href="${esc(cmUrl(c.u, { lang: c.L }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? c.L : null })} ↗</a>
+          ${ebayLink(c, c.L)}
           <button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div>
       </div></article>`;
   }).join("");
@@ -1961,6 +2091,8 @@ function archInit() {
     if (!c) return;
     await archSetCard(c, true);
     archPickedI = c.i;
+    // Merken: bei der nächsten gleichen Erkennung gleich diese Karte
+    try { const a = await archGet(archLastId); if (a?.rec) snapLearnSet(a.rec, c.i); } catch {}
     renderQuick();
   });
 }
@@ -2308,6 +2440,7 @@ async function renderCollection() {
         </div>
         <div class="qfoot">${e.buy === 0 && val != null ? `<span class="chip up">gezogen · +${fmtPrice(val * q)}</span>` : e.buy != null && val != null ? chip(pct(val, e.buy)) : ""}
           <a class="cm-link" href="${esc(cmUrl(c.u, filt))}" target="_blank" rel="noopener">${cmLabel(filt)} ↗</a>
+          ${ebayLink(c, lang)}
           ${colDelAsk === e.id
             ? `<button type="button" class="arch-btn col-del-yes" data-col-del="${e.id}">Wirklich entfernen</button><button type="button" class="arch-btn" data-col-del-no>Abbrechen</button>`
             : `<button type="button" class="arch-btn" data-col-ask="${e.id}">Entfernen</button>`}

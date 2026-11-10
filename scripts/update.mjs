@@ -2,7 +2,7 @@
 // letzten 5 Jahre über die TCGdex-API und schreibt die Top 30 pro Set
 // (sortiert nach 30-Tage-Durchschnitt) nach docs/data/.
 import { loadUsdRate, recentMainSets, tcgplayerCards, tcgplayerPrices } from "./tcgplayer.mjs";
-import { cardmarketGuidePrices } from "./cmguide.mjs";
+import { cardmarketGuidePrices, resolveSharedProducts } from "./cmguide.mjs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -251,6 +251,7 @@ async function buildSet(set, fallback = null) {
     cards: top,
     allCards: cards.filter(Boolean),
     official: set.cardCount?.official ?? null,
+    abbr: set.abbreviation?.official ?? null,
   };
 }
 
@@ -366,7 +367,7 @@ let EN_SET_NAMES = new Map();
 function toSearchData(builtSets, tag) {
   const sets = builtSets.map((s) => {
     const ne = s.enName ?? EN_SET_NAMES.get(s.id);
-    return { id: s.id, name: s.name, off: s.official, date: s.releaseDate, ...(ne && ne !== s.name ? { ne } : {}), ...(s.priceSource ? { src: s.priceSource } : {}) };
+    return { id: s.id, name: s.name, off: s.official, date: s.releaseDate, ...(ne && ne !== s.name ? { ne } : {}), ...(s.abbr ? { ab: s.abbr } : {}), ...(s.priceSource ? { src: s.priceSource } : {}) };
   });
   const cards = [];
   builtSets.forEach((s, si) => {
@@ -648,6 +649,47 @@ async function repairNewSet(built, set) {
   return built;
 }
 
+// Ältere Sets: Karten, die bei TCGdex dasselbe Cardmarket-Produkt teilen, über den Cardmarket-Katalog
+// trennen (Vergleich: TCGplayer-Preis, sonst Seltenheit). Rest bleibt "unsicher" (in der App erkannt).
+const rarityRank = (r) => {
+  const t = String(r ?? "").toLowerCase();
+  if (/hyper|gold|secret|versteckt|special|besondere|illustration|ultra|full art|rainbow|shiny|glitzer/.test(t)) return 3;
+  if (/holo/.test(t)) return 2;
+  return 1;
+};
+async function repairShared(built, set) {
+  try {
+    const pid = (c) => /idProduct=(\d+)/.exec(c.url ?? "")?.[1];
+    const groups = new Map();
+    built.allCards.forEach((c, i) => { const p = pid(c); if (p) (groups.get(p) ?? groups.set(p, []).get(p)).push(i); });
+    const shared = [...groups].filter(([, idx]) => idx.length > 1);
+    if (!shared.length) return built;
+    let tp = null;
+    const fx = await usdRate();
+    if (fx) {
+      const en = EN_SET_NAMES.get(set.id) ?? set.name;
+      tp = await tcgplayerPrices({ id: `ref-${set.id}`, name: set.name, enName: en, releaseDate: set.releaseDate },
+        built.allCards.map((c) => ({ no: c.no, name: c.enName ?? c.name })), fx).catch(() => null);
+    }
+    const res = await resolveSharedProducts(shared.map(([idProduct, idx]) => ({
+      idProduct, cards: idx.map((i) => ({ i, ref: tp?.[i]?.avg30 ?? null, rank: rarityRank(built.allCards[i].rarity) })),
+    })));
+    if (!res.size) return built;
+    for (const [i, p] of res) {
+      const c = built.allCards[i];
+      Object.assign(c, { avg1: p.avg1, avg7: p.avg7, avg30: p.avg30, trend: p.trend, low: p.low, variant: p.variant, url: cardmarketUrl(p.idProduct), hasPrice: isNum(p.avg30) });
+      delete c.rev30; delete c.rev7;
+      if (p.amb) c.amb = true;
+    }
+    const priced = built.allCards.filter((c) => c.hasPrice);
+    built.cards = [...priced].sort((a, b) => b.avg30 - a.avg30).slice(0, TOP_N).map(({ hasPrice, enName, avg1, low, rev30, rev7, ...c }) => c);
+    console.log(`  ${set.name} (${set.id}): ${res.size} von ${shared.reduce((n, [, x]) => n + x.length, 0)} Karten mit geteiltem Produkt repariert`);
+  } catch (err) {
+    console.warn(`  Reparatur geteilter Produkte für ${set.id} übersprungen: ${err.message}`);
+  }
+  return built;
+}
+
 // Notlösung, wenn pokemontcg.io ausfällt: Set nur aus TCGplayer bauen
 const mostCommon = (xs) => { const m = new Map(); for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null; };
 
@@ -733,6 +775,7 @@ async function main() {
       built = await addTcgplayer(built, { id: set.id, name: set.name, enName: en?.name ?? set.name, releaseDate: set.releaseDate }, makeDeNamer(species));
     }
     if (built.cards.length) built = await repairNewSet(built, set);
+    if (built.cards.length) built = await repairShared(built, set);
     allSets.push(built);
     if (built.cards.length) result.push(built);
     else {
@@ -767,6 +810,7 @@ async function main() {
         });
         if (!built?.cards.length) continue;
         built.enName = g.enName;
+        built.abbr = g.abbr;
         console.log(`Neues Set ohne TCGdex: ${built.name} (${id}), ${built.allCards.length} Karten von TCGplayer`);
         result.push(built);
         allSets.push(built);
@@ -836,6 +880,7 @@ async function main() {
           b = await addTcgplayer(b, { id: st.id, name: st.name, enName: en?.name ?? st.name, releaseDate: st.releaseDate }, makeDeNamer(species));
         }
       }
+      if (b.allCards.some((c) => c.hasPrice)) b = await repairShared(b, st);
       builtOld.push(b);
     }
     const old = toSearchData(builtOld, tag);

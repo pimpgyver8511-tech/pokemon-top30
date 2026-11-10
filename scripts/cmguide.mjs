@@ -36,6 +36,7 @@ async function load() {
       created: pg.createdAt ?? null,
       price: new Map((pg.priceGuides ?? []).map((x) => [x.idProduct, x])),
       products: cat.products ?? [],
+      byId: new Map((cat.products ?? []).map((p) => [p.idProduct, p])),
     }));
   return dataP;
 }
@@ -117,5 +118,47 @@ export async function cardmarketGuidePrices(cards, log = console.log) {
   }
   log(`  Cardmarket-Preisliste (${created ?? "?"}): Erweiterung ${best.exp} mit ${best.list.length} Karten, ${paired} von ${cards.length} zugeordnet` +
     `${rejected ? `, ${rejected} unplausibel verworfen` : ""}${skipped ? `, ${skipped} mehrdeutig übersprungen` : ""}`);
+  return out;
+}
+
+/**
+ * Datenfehler reparieren: Mehrere Karten eines Sets zeigen bei TCGdex auf dasselbe Cardmarket-Produkt
+ * (z. B. Arbok Expedition Holo Nr. 3 und normale Nr. 35). Im Cardmarket-Katalog liegen die Versionen als
+ * eigene Produkte in derselben Erweiterung mit demselben Namen. Gepaart wird nach Vergleichspreis
+ * (TCGplayer), sonst nach Seltenheit (Holo/Sonderversion teurer als die normale Karte).
+ * groups: [{ idProduct, cards: [{ i, ref, rank }] }]
+ * Rückgabe: Map i -> { avg1, avg7, avg30, trend, low, variant, idProduct, amb? }
+ */
+export async function resolveSharedProducts(groups, log = console.log) {
+  const { price, products, byId } = await load();
+  const out = new Map();
+  let ok = 0, skipped = 0;
+  for (const g of groups) {
+    const p = byId.get(Number(g.idProduct));
+    if (!p) { skipped += g.cards.length; continue; }
+    const name = cleanName(p.name);
+    const cands = products.filter((x) => x.idExpansion === p.idExpansion && cleanName(x.name) === name)
+      .map((x) => ({ x, pr: pick(price.get(x.idProduct)) }));
+    if (cands.length !== g.cards.length) { skipped += g.cards.length; continue; }
+    const byRef = g.cards.every((c) => c.ref > 0);
+    const ranks = new Set(g.cards.map((c) => c.rank));
+    if (!byRef && ranks.size !== g.cards.length) { skipped += g.cards.length; continue; }
+    const key = (c) => (byRef ? c.ref : c.rank);
+    const cs = [...g.cards].sort((a, b) => key(b) - key(a));
+    const ps = [...cands].sort((a, b) => (b.pr?.avg30 ?? b.pr?.trend ?? 0) - (a.pr?.avg30 ?? a.pr?.trend ?? 0));
+    const amb = new Set();
+    if (byRef) for (let j = 1; j < cs.length; j++) {
+      const a = cs[j - 1].ref, b = cs[j].ref;
+      if (a / b < 1.25 && a >= 5) { amb.add(cs[j - 1].i); amb.add(cs[j].i); }
+    }
+    cs.forEach((c, j) => {
+      const { x, pr } = ps[j];
+      if (!pr?.avg30 && !pr?.avg7) return;
+      if (c.ref > 0 && pr.avg30 && Math.max(c.ref, pr.avg30) >= 2 && Math.max(c.ref, pr.avg30) / Math.min(c.ref, pr.avg30) > 3) return;
+      out.set(c.i, { ...pr, idProduct: x.idProduct, ...(amb.has(c.i) ? { amb: true } : {}) });
+      ok++;
+    });
+  }
+  log(`  Cardmarket-Katalog: ${ok} Karten mit geteiltem Produkt neu zugeordnet${skipped ? `, ${skipped} nicht eindeutig` : ""}`);
   return out;
 }

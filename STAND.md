@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 10.11.2026
+Zuletzt aktualisiert: 10.11.2026 (abends)
 
 ## Was fertig ist
 
@@ -20,6 +20,15 @@ Zuletzt aktualisiert: 10.11.2026
 - **Grading** (`#grading`): eigene Suche für gegradete Karten. Karte finden (gleiche Suche wie Schnellsuche), Grad wählen (PSA 10/9, BGS 10, CGC 10), dann Link zu PriceCharting (Preise je Grad, abgeschlossene Auktionen) und zu verkauften eBay-Angeboten. Keine Preise von PriceCharting auf der Seite selbst (Abrufen verbieten deren Nutzungsbedingungen, API kostet Geld).
 - **Foto machen:** öffnet direkt die Kamera (auch in der installierten App)
 - **Als App installierbar,** Screenshots über das Android-Teilen-Menü direkt an die Seite schicken
+
+## Erkennung und Zuordnung (10.11.2026)
+
+- **Bildvergleich:** Im Modus „Genau“ prüft Claude bei mehreren möglichen Versionen (Nummer nicht lesbar oder nicht eindeutig) das Foto gegen bis zu 6 Kartenbilder (kleine Bilder per URL) und wählt die passende (`snapVisualPick`). Kostet einen zweiten Aufruf, ca. 1 Cent.
+- **Lernen:** „Diese ist es“ merkt sich Erkennung (Name, Nummer, Sprache) → Karte im Browser (`localStorage` „snapLearn“, max. 1000); nur wenn eine Nummer gelesen wurde.
+- **Set-Kürzel:** Erkennung liest `set_code` (z. B. TWM); Sets tragen `ab` (TCGdex `abbreviation.official`, bei TCGplayer-Sets das Gruppen-Kürzel) im Suchtext.
+- **Geteilte Cardmarket-Produkte (alle Sets):** `repairShared` + `resolveSharedProducts`: Versionen derselben Erweiterung und desselben Namens im Cardmarket-Katalog, gepaart nach TCGplayer-Preis, sonst nach Seltenheit (Holo/Sonder > normal). TCGplayer-Gruppe für alte Sets auch über den Namen (±1 Jahr).
+- **eBay verkauft:** Link je Karte in Suche, Archiv und Sammlung, mit Sprache (z. B. „deutsch“, „japanese“).
+- **Fotos bei Cardmarket:** Fotos hängen an Angebotsnummern (marketplace-article-scans.s3.cardmarket.com/<Angebot>/<Angebot>.jpg), Angebote sind nicht frei abrufbar → nicht automatisch erkennbar.
 
 ## Datenumfang (Stand Lauf vom 21.10.2026)
 
