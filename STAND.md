@@ -1,6 +1,6 @@
 # Stand und nächste Schritte
 
-Zuletzt aktualisiert: 05.11.2026
+Zuletzt aktualisiert: 10.11.2026
 
 ## Was fertig ist
 
@@ -68,7 +68,8 @@ Zuletzt aktualisiert: 05.11.2026
 ## Bekannte Grenzen
 
 - Cardmarket-Preise gelten für alle europäischen Sprachen zusammen (Deutsch = Englisch)
-- Bei koreanischen und chinesischen Karten ist unklar, ob der Preis nur für diese Sprachversion gilt
+- **Sprachen und Preise (geprüft 10.11.):** Cardmarkets Durchschnitt gilt je Produkt für alle Sprachen zusammen (westlich: DE/EN/FR/IT/ES; asiatisch: JP/KR/CN). Die öffentliche Preisliste hat keine Aufteilung nach Sprache; getrennte Angebote zeigt nur Cardmarket selbst. Deshalb: Cardmarket-Links mit Sprachfilter (`&language=`: en 1, fr 2, de 3, es 4, it 5, zh-cn 6, ja 7, ko 10, zh-tw 11; ob der Filter im Kurzlink greift, ist nicht bestätigt), in der Sammlung Feld „Sprache“ je Karte, eigener Wert für den echten Preis.
+- Alle koreanischen und chinesischen Karten (239 / 3.931 / 742 mit Preis) haben bei TCGdex das Cardmarket-Produkt der japanischen Karte: Hinweis „⚠ JP-Preis“ (`_jp`, im Browser erkannt), zählen in der Sammlung erst mit eigenem Wert.
 - Wenige koreanische Karten in der Datenquelle; viele asiatische Karten ohne Bild
 - **Ersatzpreise TCGplayer (seit 05.11.):** Hat ein Set gar keine Cardmarket-Preise (z. B. „30 Jahre“, „30 Jahre: Klassische Sammlung“, Celebrations Classic Collection), nimmt der Lauf TCGplayer-Marktpreise (USA) von tcgcsv.com und rechnet sie zum EZB-Referenzkurs (letzter Bankarbeitstag) in Euro um (`scripts/tcgplayer.mjs`). Auf der Seite mit „US“ markiert, Ø 7 Tage leer, Link zu TCGplayer. Sobald Cardmarket Preise hat, werden automatisch diese genommen. Zuordnung über Nummer + Name; Test am 05.11.: 158/158 und 30/30 Karten. Fällt pokemontcg.io für cel25c aus, wird das Set direkt aus TCGplayer gebaut.
 - Ältere Sets ganz ohne Cardmarket-Preis bei TCGdex (14 Sets, z. B. Glitzer-Tresor/Shiny Vault aus Hidden Fates, Gym Heroes, Gym Challenge, Wizards-/Nintendo-Promos, XY-Trainer-Kits): seit 05.11. Ersatz über pokemontcg.io (Cardmarket, erst Set-Kennung, dann Name), danach TCGplayer.

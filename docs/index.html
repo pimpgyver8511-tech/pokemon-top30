@@ -124,6 +124,8 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .warn-tag { display: inline-block; margin-left: 4px; font-size: .66rem; font-weight: 800; padding: 1px 5px; border-radius: 3px; white-space: nowrap; vertical-align: 2px; background: color-mix(in srgb, var(--foil) 35%, var(--surface)); color: var(--ink); cursor: help; }
 .warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
+.warn-tag.warn-jp { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
+.qwarn.warn-jp { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
 .warn-tag.warn-amb { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn.warn-amb { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
 .qwarn.warn-dup { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
@@ -145,6 +147,9 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .imp-miss ul { margin: 6px 0 0; padding-left: 1.2em; max-height: 260px; overflow: auto; font-size: .85rem; }
 .col-edit select { font: inherit; font-size: .9rem; padding: 5px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; box-sizing: border-box; }
 .col-edit .col-cond { grid-column: span 2; }
+.col-edit .wide { grid-column: 1 / -1; }
+.col-edit .col-lang { order: 2; }
+.col-edit .col-own { order: 3; }
 .us-tag { display: inline-block; font-size: .62rem; font-weight: 800; letter-spacing: .04em; padding: 1px 4px; border-radius: 3px; background: var(--accent); color: var(--surface); vertical-align: 2px; }
 .tp-note { margin: 0 0 10px; font-size: .85rem; color: var(--muted); }
 .cm-link {
@@ -745,6 +750,7 @@ function markShared(cards, setOf, urlOf) {
 function priceWarn(c) {
   if (!c) return null;
   if (c._dup) return { k: "dup", tag: "unsicher", t: "Preis unsicher: Die Datenquelle führt diese und eine zweite Karte des Sets (meist Holo und normale Version) unter demselben Cardmarket-Produkt. Der Preis gilt vermutlich nur für eine davon. In der Sammlung zählt die Karte erst mit eigenem Wert." };
+  if (c._jp) return { k: "jp", tag: "JP-Preis", t: `Preis der japanischen Karte: Die Datenquelle ordnet der ${c.L === "ko" ? "koreanischen" : "chinesischen"} Karte das Cardmarket-Produkt der japanischen zu. ${c.L === "ko" ? "Koreanische" : "Chinesische"} Karten kosten oft deutlich weniger. Angebote in dieser Sprache über den Cardmarket-Link ansehen; in der Sammlung zählt die Karte erst mit eigenem Wert.` };
   if (c.am || c.amb) return { k: "amb", tag: "unsicher", t: "Zuordnung unsicher: Diese Karte gibt es im Set in mehreren Versionen gleichen Namens (z. B. Special Illustration Rare und Hyper Rare), die preislich nah beieinander liegen. Welche Version welchen Cardmarket-Preis hat, ist noch nicht sicher. Bitte über den Cardmarket-Link prüfen." };
   const a7 = c.a7 ?? c.avg7, a30 = c.a30 ?? c.avg30;
   if (a7 && a30 && Math.max(a7, a30) >= 5 && Math.max(a7, a30) / Math.min(a7, a30) >= 1.6) {
@@ -758,7 +764,31 @@ const warnLine = (w) => (w ? `<div class="qwarn warn-${w.k}">⚠ ${esc(w.t)}</di
 // Zustände wie bei Cardmarket (Zahl = Filterwert im Cardmarket-Link)
 const CONDITIONS = [["", "–"], ["MT", "Mint"], ["NM", "Near Mint"], ["EX", "Excellent"], ["GD", "Good"], ["LP", "Light Played"], ["PL", "Played"], ["PO", "Poor"]];
 const COND_CODE = { MT: 1, NM: 2, EX: 3, GD: 4, LP: 5, PL: 6, PO: 7 };
-const condUrl = (u, cond) => (cond && COND_CODE[cond] && /idProduct=/.test(u ?? "") ? `${u}&minCondition=${COND_CODE[cond]}` : u);
+// Cardmarket-Sprachen (Filterwert im Link). Der Durchschnittspreis eines Produkts mischt alle Sprachen:
+// westliche Karten DE/EN/FR/IT/ES zusammen, asiatische JP/KR/CN zusammen. Nach Sprache getrennt
+// zeigt nur Cardmarket selbst die Angebote, deshalb führen die Links gefiltert dorthin.
+const CM_LANG = { en: 1, fr: 2, de: 3, es: 4, it: 5, "zh-cn": 6, ja: 7, ko: 10, "zh-tw": 11 };
+const CM_LANG_NAME = { de: "deutsch", en: "englisch", fr: "französisch", it: "italienisch", es: "spanisch", ja: "japanisch", ko: "koreanisch", "zh-tw": "chinesisch", "zh-cn": "chinesisch" };
+const COL_LANGS = [["", "–"], ["de", "Deutsch"], ["en", "Englisch"], ["fr", "Französisch"], ["it", "Italienisch"], ["es", "Spanisch"]];
+function cmUrl(u, { lang, cond } = {}) {
+  if (!/idProduct=/.test(u ?? "")) return u;
+  let out = u;
+  if (lang && CM_LANG[lang]) out += `&language=${CM_LANG[lang]}`;
+  if (cond && COND_CODE[cond]) out += `&minCondition=${COND_CODE[cond]}`;
+  return out;
+}
+// Beschriftung des Links, z. B. "Cardmarket deutsch, ab EX"
+const cmLabel = ({ lang, cond } = {}) => `Cardmarket${[lang && CM_LANG_NAME[lang], cond && COND_CODE[cond] ? `ab ${cond}` : ""].filter(Boolean).map((x, i) => (i ? ", " : " ") + x).join("")}`;
+const unsurePrice = (c) => Boolean(c?._dup || c?._jp);
+
+// Koreanische und chinesische Karten, denen die Datenquelle das Cardmarket-Produkt der
+// japanischen Karte zuordnet: Der Preis ist dann der der japanischen Karte.
+function markJpShared() {
+  const ja = new Set();
+  const pid = (c) => /idProduct=(\d+)/.exec(c.u ?? "")?.[1];
+  for (const c of quickData.cards) if (c.L === "ja") { const p = pid(c); if (p) ja.add(p); }
+  for (const c of quickData.cards) if (c.L && c.L !== "ja") { const p = pid(c); c._jp = Boolean(p && ja.has(p)); }
+}
 
 // Datenstand vom Server (kleine Datei, nie zwischengespeichert). Damit erkennt der Handy-Speicher
 // neue Tagespreise sofort, statt erst beim übernächsten Öffnen.
@@ -789,6 +819,7 @@ async function loadQuick() {
     for (const c of part.cards) c.s += off;
     indexCards(part.cards);
     quickData.cards.push(...part.cards);
+    markJpShared();
   };
   const extra = (file, done) => dataUrl(file.replace("data/", "")).then((u) => fetch(u, { cache: "no-cache" }))
     .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -941,10 +972,12 @@ function renderQuick() {
     return;
   }
   const who = q.species.map((id) => speciesLabel.get(id)?.de ?? speciesLabel.get(id)?.en).filter(Boolean).join(" + ");
-  const summary = `<p class="quick-hint">${total > list.length ? `Die ${list.length} teuersten von ${total} Treffern` : `${total} Treffer`}${who ? ` für <b>${esc(who)}</b>` : ""}${q.lang ? ` · ${LANG_LABEL[q.lang]}` : " · alle Sprachen"}${q.lang === "de" || q.lang === "en" ? " · Cardmarket-Preis gilt für alle europäischen Sprachen zusammen" : ""}</p>`;
+  const summary = `<p class="quick-hint">${total > list.length ? `Die ${list.length} teuersten von ${total} Treffern` : `${total} Treffer`}${who ? ` für <b>${esc(who)}</b>` : ""}${q.lang ? ` · ${LANG_LABEL[q.lang]}` : " · alle Sprachen"}${q.lang === "de" || q.lang === "en" ? ` · Der Cardmarket-Durchschnitt mischt alle europäischen Sprachen; der Link zeigt nur ${CM_LANG_NAME[q.lang]}e Angebote` : ""}</p>`;
   box.innerHTML = summary + list.map((c) => {
     const set = quickData.sets[c.s];
     const g = groupOf(c);
+    // Sprache für den Cardmarket-Link: bei asiatischen Karten die der Karte, sonst die gesuchte (deutsch/englisch)
+    const linkLang = c.L ?? (q.lang === "de" || q.lang === "en" ? q.lang : null);
     const showEn = q.lang === "en" && c.e;
     const title = showEn ? c.e : c.n;
     const sub = showEn ? c.n : g === "intl" ? c.e : c.p?.length ? speciesLabel.get(c.p[0])?.de : null;
@@ -974,7 +1007,7 @@ function renderQuick() {
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
         <div class="qmeta">${meta}</div>
         ${prices}
-        <div class="qfoot">${c.a30 && !isTp(c) ? chip(pct(c.a7, c.a30)) : ""}${c.tu ? `<a class="cm-link" href="${esc(c.tu)}" target="_blank" rel="noopener">TCGplayer ↗</a>` : ""}<a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>${colBtn(c)}${pickBtn(c)}</div>
+        <div class="qfoot">${c.a30 && !isTp(c) ? chip(pct(c.a7, c.a30)) : ""}${c.tu ? `<a class="cm-link" href="${esc(c.tu)}" target="_blank" rel="noopener">TCGplayer ↗</a>` : ""}<a class="cm-link" href="${esc(cmUrl(c.u, { lang: linkLang }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? linkLang : null })} ↗</a>${colBtn(c)}${pickBtn(c)}</div>
       </div>
     </article>`;
   }).join("");
@@ -1830,7 +1863,7 @@ async function renderArchive() {
         <div class="qfoot">${then30 && now30 ? chip(pct(now30, then30)) : ""}
           ${colArch.has(e.id) ? '<button type="button" class="arch-btn col-in" data-col-go>✓ In Sammlung</button>' : `<button type="button" class="arch-btn" data-col-arch="${e.id}">+ Sammlung</button>`}
           <button type="button" class="arch-btn" data-arch-search="${esc(e.query || c.n)}" data-arch-id="${e.id}">Andere Karte?</button>
-          <a class="cm-link" href="${esc(c.u)}" target="_blank" rel="noopener">Cardmarket ↗</a>
+          <a class="cm-link" href="${esc(cmUrl(c.u, { lang: c.L }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? c.L : null })} ↗</a>
           <button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div>
       </div></article>`;
   }).join("");
@@ -2100,7 +2133,7 @@ const colKey = (e) => (e.variant === "Reverse Holo" ? `${e.card.i}|rh` : e.card.
 const COL_PAGE = 60;
 let colLimit = COL_PAGE;   // so viele Karten werden in der Liste gezeigt, Rest per "Weitere anzeigen"
 let colOrder = [];         // Reihenfolge der zuletzt gezeigten Liste (für Sprünge aus dem Ranking)
-const colVal = (e) => (e.own != null ? e.own : archCurrent(e.card)?._dup ? null : colNow(e)); // zählt für Wert, Ranking, Gewinn
+const colVal = (e) => (e.own != null ? e.own : unsurePrice(archCurrent(e.card)) ? null : colNow(e)); // zählt für Wert, Ranking, Gewinn
 
 // Sammlungswert und Preis jeder Karte einmal pro Preistag merken (Verlaufskurve und Performance)
 async function colSnapshot(total, paid, n, entries) {
@@ -2163,7 +2196,7 @@ async function renderCollection() {
     const q = e.qty || 1, now = colVal(e);
     pieces += q;
     if (e.own != null) own++;
-    if (now != null) total += now * q; else if (archCurrent(e.card)?._dup && colNow(e) != null) unsure++; else missing++;
+    if (now != null) total += now * q; else if (unsurePrice(archCurrent(e.card)) && colNow(e) != null) unsure++; else missing++;
     if (e.buy != null && now != null) {
       paid += e.buy * q; paidNow += now * q; paidCount++;
       // Einkaufspreis 0 = selbst gezogen (aus Boostern): ganzer Wert ist Gewinn
@@ -2199,7 +2232,7 @@ async function renderCollection() {
   const ranked = entries.filter((e) => colVal(e) != null).sort((a, b) => colVal(b) - colVal(a));
   const rankBox = document.getElementById("col-rank");
   // Karten mit unsicherem Preis ohne eigenen Wert: nicht im Ranking, aber hier genannt
-  const unranked = entries.filter((e) => colVal(e) == null && archCurrent(e.card)?._dup);
+  const unranked = entries.filter((e) => colVal(e) == null && unsurePrice(archCurrent(e.card)));
   rankBox.hidden = !ranked.length && !unranked.length;
   const RANK_N = colRankAll ? ranked.length : 10;
   rankBox.innerHTML = ranked.length ? `<h3>Wertvollste Karten <small>Ø 30 Tage bzw. eigener Wert, pro Stück</small></h3>
@@ -2245,6 +2278,8 @@ async function renderCollection() {
     const c = e.card, cur = archCurrent(c), q = e.qty || 1, now = colNow(e), val = colVal(e);
     const img = e.thumb || c.img;
     const ownTxt = e.own != null ? e.own.toFixed(2).replace(".", ",") : "";
+    const lang = c.L ?? (e.lang || null);          // asiatische Karten: Sprache der Karte, sonst gewählte Sprache
+    const filt = /idProduct=/.test(c.u ?? "") ? { lang, cond: e.cond } : {};
     const pic = img ? `<img class="arch-thumb" loading="lazy" src="${esc(img)}" alt="${esc(c.n)}">` : '<span class="arch-thumb no-img">?</span>';
     const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
     const buyTxt = e.buy != null ? e.buy.toFixed(2).replace(".", ",") : "";
@@ -2258,8 +2293,8 @@ async function renderCollection() {
         <div class="qprices">
           ${e.own != null ? priceCell("Eigener Wert / Stück", e.own, true) : ""}${priceCell(isTp(cur) ? "US-Preis heute (€)" : "Ø 30 heute", now, e.own == null)}${priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, val != null ? val * q : null) : ""}${e.buy === 0 ? '<div class="qprice"><span>Bezahlt</span><b>gezogen</b></div>' : e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
         </div>
-        ${e.cond ? `<div class="qmeta">Zustand: <b>${esc(CONDITIONS.find(([k]) => k === e.cond)?.[1] ?? e.cond)}</b>. Der Cardmarket-Durchschnitt mischt alle Zustände${e.own == null ? " – für deinen Zustand am besten auf Cardmarket nachsehen und als eigenen Wert eintragen" : ""}.</div>` : ""}
-        ${e.own != null && priceWarn(cur) ? `<div class="qwarn warn-${priceWarn(cur).k}">⚠ Cardmarket-Preis ${priceWarn(cur).k === "dup" ? "unsicher" : "schwankt stark"}, es zählt dein eigener Wert.</div>` : warnLine(priceWarn(cur))}
+        ${e.cond || (!c.L && e.lang) ? `<div class="qmeta">${[!c.L && e.lang ? `Sprache: <b>${esc(COL_LANGS.find(([k]) => k === e.lang)?.[1] ?? e.lang)}</b>` : "", e.cond ? `Zustand: <b>${esc(CONDITIONS.find(([k]) => k === e.cond)?.[1] ?? e.cond)}</b>` : ""].filter(Boolean).join(" · ")}. Der Cardmarket-Durchschnitt mischt alle ${[!c.L && e.lang ? "europäischen Sprachen" : "", e.cond ? "Zustände" : ""].filter(Boolean).join(" und ")}${e.own == null ? ` – für deine Karte über „${cmLabel(filt)}“ nachsehen und als eigenen Wert eintragen` : ""}.</div>` : ""}
+        ${e.own != null && priceWarn(cur) ? `<div class="qwarn warn-${priceWarn(cur).k}">⚠ Cardmarket-Preis ${{ dup: "unsicher", amb: "unsicher", jp: "gilt für die japanische Karte" }[priceWarn(cur).k] ?? "schwankt stark"}, es zählt dein eigener Wert.</div>` : warnLine(priceWarn(cur))}
         <div class="col-perfrow">${PERIODS.map(([k, label]) => perfCell(k, label, perf.get(e.id)[k], top[k]?.[0] === e)).join("")}</div>
         ${isTp(cur) ? `<div class="qmeta">${usTag} Noch kein Cardmarket-Preis: TCGplayer-Marktpreis (USA), ${fxNote(quickData.fx)}.</div>` : ""}
         ${e.grade ? '<div class="qmeta">Der Preis gilt für ungegradete Karten.</div>' : ""}
@@ -2267,11 +2302,12 @@ async function renderCollection() {
           <label>Anzahl<input type="number" min="1" step="1" inputmode="numeric" value="${q}" data-col-f="qty" data-col-id="${e.id}"></label>
           <label>Bezahlt € / St.<input type="text" inputmode="decimal" placeholder="0 = gezogen" value="${esc(buyTxt)}" data-col-f="buy" data-col-id="${e.id}"></label>
           <label>Grad<input type="text" list="col-grades" placeholder="ohne" value="${esc(e.grade ?? "")}" data-col-f="grade" data-col-id="${e.id}"></label>
-          <label class="col-cond">Zustand<select data-col-f="cond" data-col-id="${e.id}">${CONDITIONS.map(([k, l]) => `<option value="${k}"${(e.cond ?? "") === k ? " selected" : ""}>${k ? `${k} · ${l}` : l}</option>`).join("")}</select></label>
-          <label class="col-own">Eigener Wert € / St.<input type="text" inputmode="decimal" placeholder="Ø 30 Tage" value="${esc(ownTxt)}" data-col-f="own" data-col-id="${e.id}"></label>
+          ${c.L ? "" : `<label class="col-lang">Sprache<select data-col-f="lang" data-col-id="${e.id}">${COL_LANGS.map(([k, l]) => `<option value="${k}"${(e.lang ?? "") === k ? " selected" : ""}>${l}</option>`).join("")}</select></label>`}
+          <label class="col-cond${c.L ? " wide" : ""}">Zustand<select data-col-f="cond" data-col-id="${e.id}">${CONDITIONS.map(([k, l]) => `<option value="${k}"${(e.cond ?? "") === k ? " selected" : ""}>${k ? `${k} · ${l}` : l}</option>`).join("")}</select></label>
+          <label class="col-own wide">Eigener Wert € / St.<input type="text" inputmode="decimal" placeholder="Ø 30 Tage" value="${esc(ownTxt)}" data-col-f="own" data-col-id="${e.id}"></label>
         </div>
         <div class="qfoot">${e.buy === 0 && val != null ? `<span class="chip up">gezogen · +${fmtPrice(val * q)}</span>` : e.buy != null && val != null ? chip(pct(val, e.buy)) : ""}
-          <a class="cm-link" href="${esc(condUrl(c.u, e.cond))}" target="_blank" rel="noopener">Cardmarket${e.cond && COND_CODE[e.cond] ? ` ab ${e.cond}` : ""} ↗</a>
+          <a class="cm-link" href="${esc(cmUrl(c.u, filt))}" target="_blank" rel="noopener">${cmLabel(filt)} ↗</a>
           ${colDelAsk === e.id
             ? `<button type="button" class="arch-btn col-del-yes" data-col-del="${e.id}">Wirklich entfernen</button><button type="button" class="arch-btn" data-col-del-no>Abbrechen</button>`
             : `<button type="button" class="arch-btn" data-col-ask="${e.id}">Entfernen</button>`}
@@ -2353,11 +2389,11 @@ async function colShow(id) {
 function colCsv(entries) {
   const num = (v) => (v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","));
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Zustand", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Eigener Wert / Stück", "Wert gesamt", "Gewinn / Verlust", "Preis-Hinweis", "Hinzugefügt", "Cardmarket", "Variante", "Ordner", "Notiz"];
+  const head = ["Karte", "Englischer Name", "Set", "Nummer", "Sprache", "Seltenheit", "Anzahl", "Grad", "Zustand", "Kaufpreis / Stück", "Ø 30 heute", "Ø 7 heute", "Eigener Wert / Stück", "Wert gesamt", "Gewinn / Verlust", "Preis-Hinweis", "Hinzugefügt", "Cardmarket", "Variante", "Ordner", "Notiz", "Kartensprache"];
   const rows = entries.map((e) => {
     const c = e.card, cur = archCurrent(c), n = e.qty || 1, now = cur?.a30 ?? null, val = colVal(e);
     return [c.n, c.e, c.set, c.no, BADGE[c.L ?? "intl"], c.r === "None" ? "" : c.r, n, e.grade, e.cond, num(e.buy), num(now), num(cur?.a7 ?? null), num(e.own),
-      num(val != null ? val * n : null), num(val != null && e.buy != null ? (val - e.buy) * n : null), priceWarn(cur)?.tag ?? "", fmtDate(e.at), c.u, e.variant ?? "", e.folder ?? "", e.note ?? ""].map(q).join(";");
+      num(val != null ? val * n : null), num(val != null && e.buy != null ? (val - e.buy) * n : null), priceWarn(cur)?.tag ?? "", fmtDate(e.at), c.u, e.variant ?? "", e.folder ?? "", e.note ?? "", e.lang ?? ""].map(q).join(";");
   });
   return "﻿" + [head.map(q).join(";"), ...rows].join("\r\n");
 }
@@ -2386,6 +2422,7 @@ function colInit() {
     if (f.dataset.colF === "buy") e.buy = colNum(f.value);
     if (f.dataset.colF === "grade") e.grade = f.value.trim();
     if (f.dataset.colF === "cond") e.cond = f.value;
+    if (f.dataset.colF === "lang") e.lang = f.value;
     if (f.dataset.colF === "own") e.own = colNum(f.value);
     await colPut(e);
     renderCollection();
@@ -2573,7 +2610,7 @@ function impRows(format, raw) {
   return raw.filter((r) => r.Karte).map((r) => ({
     lang: IMP_LANG_OWN[r.Sprache] ?? null, setId: "", setName: r.Set, no: r.Nummer, name: r["Englischer Name"] || r.Karte, url: r.Cardmarket,
     qty: Math.max(1, Math.round(Number(r.Anzahl) || 1)), variant: r.Variante || "", folder: r.Ordner || "", note: r.Notiz || "",
-    buy: colNum(r["Kaufpreis / Stück"]), own: colNum(r["Eigener Wert / Stück"]), grade: r.Grad || "", cond: r.Zustand || "",
+    buy: colNum(r["Kaufpreis / Stück"]), own: colNum(r["Eigener Wert / Stück"]), grade: r.Grad || "", cond: r.Zustand || "", cardLang: r.Kartensprache || "",
     key: `own|${r.Cardmarket}|${r.Set}|${r.Nummer}|${r.Variante || ""}|${r.Ordner || ""}`, label: `${r.Set} · ${r.Nummer} · ${r.Karte}`,
   }));
 }
@@ -2621,7 +2658,7 @@ function impRender() {
   const ok = use.filter((x) => x.how === "sicher"), unsure = use.filter((x) => x.how === "unsicher"), miss = use.filter((x) => !x.c);
   const take = [...ok, ...(im.unsure ? unsure : [])];
   const pieces = take.reduce((s, x) => s + x.r.qty, 0);
-  const value = take.reduce((s, x) => s + (x.c._dup ? 0 : impPrice(x.c, x.r.variant) ?? 0) * x.r.qty, 0);
+  const value = take.reduce((s, x) => s + (unsurePrice(x.c) ? 0 : impPrice(x.c, x.r.variant) ?? 0) * x.r.qty, 0);
   const n = (v) => v.toLocaleString("de-DE");
   box.hidden = false;
   box.innerHTML = `<h3>Import: ${esc(im.name)} <small>${im.format === "dex" ? "Dex-Export" : "CSV dieser App"}</small></h3>
@@ -2672,6 +2709,7 @@ async function impCommit() {
     if (x.r.own != null) base.own = x.r.own;
     if (x.r.grade) base.grade = x.r.grade;
     if (x.r.cond) base.cond = x.r.cond;
+    if (x.r.cardLang) base.lang = x.r.cardLang;
     if (old) { updated++; return { ...old, ...base }; }
     added++;
     return { id: id++, at: now, buy: null, grade: "", thumb: null, ...base };
