@@ -671,9 +671,11 @@ async function repairShared(built, set) {
       tp = await tcgplayerPrices({ id: `ref-${set.id}`, name: set.name, enName: en, releaseDate: set.releaseDate },
         built.allCards.map((c) => ({ no: c.no, name: c.enName ?? c.name })), fx).catch(() => null);
     }
+    // Produkte, die andere (nicht betroffene) Karten des Sets schon belegen
+    const used = new Set([...groups].filter(([, idx]) => idx.length === 1).map(([p]) => Number(p)));
     const res = await resolveSharedProducts(shared.map(([idProduct, idx]) => ({
-      idProduct, cards: idx.map((i) => ({ i, ref: tp?.[i]?.avg30 ?? null, rank: rarityRank(built.allCards[i].rarity) })),
-    })));
+      idProduct, cards: idx.map((i) => ({ i, name: built.allCards[i].enName ?? built.allCards[i].name, ref: tp?.[i]?.avg30 ?? null, rank: rarityRank(built.allCards[i].rarity) })),
+    })), used);
     if (!res.size) return built;
     for (const [i, p] of res) {
       const c = built.allCards[i];

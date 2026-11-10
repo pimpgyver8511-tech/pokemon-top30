@@ -123,41 +123,48 @@ export async function cardmarketGuidePrices(cards, log = console.log) {
 
 /**
  * Datenfehler reparieren: Mehrere Karten eines Sets zeigen bei TCGdex auf dasselbe Cardmarket-Produkt
- * (z. B. Arbok Expedition Holo Nr. 3 und normale Nr. 35). Im Cardmarket-Katalog liegen die Versionen als
- * eigene Produkte in derselben Erweiterung mit demselben Namen. Gepaart wird nach Vergleichspreis
- * (TCGplayer), sonst nach Seltenheit (Holo/Sonderversion teurer als die normale Karte).
- * groups: [{ idProduct, cards: [{ i, ref, rank }] }]
+ * (z. B. Arbok Expedition Holo Nr. 3 und normale Nr. 35, Giratina V und Giratina VSTAR). Im Cardmarket-Katalog
+ * liegen die Versionen als eigene Produkte in derselben Erweiterung. Je Karte: Produkte mit ihrem eigenen Namen,
+ * die keine andere Karte des Sets belegt. Genau eines -> eindeutig. Mehrere gleichnamige: gepaart nach
+ * Vergleichspreis (TCGplayer), sonst nach Seltenheit (Holo/Sonderversion teurer als die normale Karte).
+ * groups: [{ idProduct, cards: [{ i, name, ref, rank }] }], used: Set der idProducts anderer Karten des Sets
  * Rückgabe: Map i -> { avg1, avg7, avg30, trend, low, variant, idProduct, amb? }
  */
-export async function resolveSharedProducts(groups, log = console.log) {
+export async function resolveSharedProducts(groups, used = new Set(), log = console.log) {
   const { price, products, byId } = await load();
   const out = new Map();
   let ok = 0, skipped = 0;
+  const taken = new Set();
   for (const g of groups) {
     const p = byId.get(Number(g.idProduct));
     if (!p) { skipped += g.cards.length; continue; }
-    const name = cleanName(p.name);
-    const cands = products.filter((x) => x.idExpansion === p.idExpansion && cleanName(x.name) === name)
-      .map((x) => ({ x, pr: pick(price.get(x.idProduct)) }));
-    if (cands.length !== g.cards.length) { skipped += g.cards.length; continue; }
-    const byRef = g.cards.every((c) => c.ref > 0);
-    const ranks = new Set(g.cards.map((c) => c.rank));
-    if (!byRef && ranks.size !== g.cards.length) { skipped += g.cards.length; continue; }
-    const key = (c) => (byRef ? c.ref : c.rank);
-    const cs = [...g.cards].sort((a, b) => key(b) - key(a));
-    const ps = [...cands].sort((a, b) => (b.pr?.avg30 ?? b.pr?.trend ?? 0) - (a.pr?.avg30 ?? a.pr?.trend ?? 0));
-    const amb = new Set();
-    if (byRef) for (let j = 1; j < cs.length; j++) {
-      const a = cs[j - 1].ref, b = cs[j].ref;
-      if (a / b < 1.25 && a >= 5) { amb.add(cs[j - 1].i); amb.add(cs[j].i); }
+    const byName = new Map();
+    for (const c of g.cards) { const k = cleanName(c.name); (byName.get(k) ?? byName.set(k, []).get(k)).push(c); }
+    for (const [nm, cs0] of byName) {
+      const cands = products.filter((x) => x.idExpansion === p.idExpansion && cleanName(x.name) === nm
+        && (!used.has(x.idProduct) || x.idProduct === p.idProduct) && !taken.has(x.idProduct))
+        .map((x) => ({ x, pr: pick(price.get(x.idProduct)) }));
+      if (cands.length !== cs0.length) { skipped += cs0.length; continue; }
+      let cs = cs0, amb = new Set();
+      if (cs0.length > 1) {
+        const byRef = cs0.every((c) => c.ref > 0);
+        if (!byRef && new Set(cs0.map((c) => c.rank)).size !== cs0.length) { skipped += cs0.length; continue; }
+        const key = (c) => (byRef ? c.ref : c.rank);
+        cs = [...cs0].sort((a, b) => key(b) - key(a));
+        cands.sort((a, b) => (b.pr?.avg30 ?? b.pr?.trend ?? 0) - (a.pr?.avg30 ?? a.pr?.trend ?? 0));
+        if (byRef) for (let j = 1; j < cs.length; j++) {
+          const a = cs[j - 1].ref, b = cs[j].ref;
+          if (a / b < 1.25 && a >= 5) { amb.add(cs[j - 1].i); amb.add(cs[j].i); }
+        }
+      }
+      cs.forEach((c, j) => {
+        const { x, pr } = cands[j];
+        taken.add(x.idProduct);
+        if (!pr?.avg30 && !pr?.avg7) return;
+        out.set(c.i, { ...pr, idProduct: x.idProduct, ...(amb.has(c.i) ? { amb: true } : {}) });
+        ok++;
+      });
     }
-    cs.forEach((c, j) => {
-      const { x, pr } = ps[j];
-      if (!pr?.avg30 && !pr?.avg7) return;
-      if (c.ref > 0 && pr.avg30 && Math.max(c.ref, pr.avg30) >= 2 && Math.max(c.ref, pr.avg30) / Math.min(c.ref, pr.avg30) > 3) return;
-      out.set(c.i, { ...pr, idProduct: x.idProduct, ...(amb.has(c.i) ? { amb: true } : {}) });
-      ok++;
-    });
   }
   log(`  Cardmarket-Katalog: ${ok} Karten mit geteiltem Produkt neu zugeordnet${skipped ? `, ${skipped} nicht eindeutig` : ""}`);
   return out;
