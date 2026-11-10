@@ -135,13 +135,19 @@ export async function resolveSharedProducts(groups, used = new Set(), log = cons
   const out = new Map();
   let ok = 0, skipped = 0;
   const taken = new Set();
+  // Haupt-Erweiterung des Sets: die, in der die übrigen Karten des Sets liegen. TCGdex verweist bei
+  // Fehlern manchmal auf ein Produkt einer anderen Erweiterung (z. B. Promos).
+  const expCount = new Map();
+  for (const id of used) { const e = byId.get(Number(id))?.idExpansion; if (e) expCount.set(e, (expCount.get(e) ?? 0) + 1); }
+  const mainExp = [...expCount].sort((a, b) => b[1] - a[1])[0]?.[0];
   for (const g of groups) {
     const p = byId.get(Number(g.idProduct));
     if (!p) { skipped += g.cards.length; continue; }
     const byName = new Map();
     for (const c of g.cards) { const k = cleanName(c.name); (byName.get(k) ?? byName.set(k, []).get(k)).push(c); }
     for (const [nm, cs0] of byName) {
-      const cands = products.filter((x) => x.idExpansion === p.idExpansion && cleanName(x.name) === nm
+      const exps = new Set([p.idExpansion, mainExp].filter(Boolean));
+      const cands = products.filter((x) => exps.has(x.idExpansion) && cleanName(x.name) === nm
         && (!used.has(x.idProduct) || x.idProduct === p.idProduct) && !taken.has(x.idProduct))
         .map((x) => ({ x, pr: pick(price.get(x.idProduct)) }));
       if (cands.length !== cs0.length) { skipped += cs0.length; continue; }
