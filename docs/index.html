@@ -113,7 +113,7 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 td.rank { color: var(--muted); width: 2.2em; text-align: right; }
 td.img { width: 64px; }
 td.img .no-img { display: grid; place-items: center; width: 52px; aspect-ratio: 245 / 342; border-radius: 3px; background: var(--line); color: var(--muted); font-weight: 700; }
-td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 3px; display: block; background: var(--line); }
+td.img img { width: 52px; height: calc(52px * 342 / 245); object-fit: cover; overflow: hidden; border-radius: 3px; display: block; background: var(--line); }
 .card-name { font-weight: 700; }
 .card-sub { color: var(--muted); font-size: .8rem; }
 .price30 { font-weight: 700; }
@@ -125,6 +125,7 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
 .snap-note { font-size: .9rem; }
+#sets { overflow-anchor: none; } /* Höhenausgleich beim Nachladen der Sets macht fillSet selbst */
 .snap-multi { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
 .snap-multi p { margin: 0; }
 .snap-multi ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 340px; overflow: auto; }
@@ -400,6 +401,7 @@ b.up { color: var(--up); } b.down { color: var(--down); } b.flat { color: var(--
   .hide-sm { display: none; }
   th, td { padding: 7px 6px; }
   td.img img, td.img .no-img { width: 44px; }
+  td.img img { height: calc(44px * 342 / 245); }
   .card-sub { font-size: .75rem; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
@@ -546,7 +548,8 @@ html { scroll-behavior: smooth; }
 
 <script>
 const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
-const fmtDate = (iso) => new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const dateFmt = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtDate = (iso) => dateFmt.format(new Date(iso));
 const fmtPrice = (v) => (v == null ? "–" : eur.format(v));
 
 function pct(now, before) {
@@ -701,6 +704,8 @@ function render() {
   if (collection) return renderCollection();
   if (view === "all") return renderAll(setId, q);
   const out = [];
+  lazySets.clear();
+  let filled = 0;
   for (const s of data.sets) {
     if (setId && s.id !== setId) continue;
     const cards = sortCards(s.cards.filter((c) => !q || c.name.toLowerCase().includes(q))).map((c, i) => [c, i]);
@@ -714,19 +719,55 @@ function render() {
       continue;
     }
     if (!cards.length) continue;
+    const table = () => `<div class="table-scroll"><table>${tableHead(true)}<tbody>${cards.map(([c, i]) => cardRow(c, i)).join("")}</tbody></table></div>`;
+    const lazy = ++filled > LAZY_FIRST;
+    if (lazy) lazySets.set(`set-${s.id}`, table);
     out.push(`<section class="set" id="set-${esc(s.id)}">
       <div class="set-head"><h2>${esc(s.name)}</h2>
         <span class="set-meta">${s.serie ? esc(s.serie) + " · " : ""}erschienen ${fmtDate(s.releaseDate)}</span></div>
       ${s.priceSource ? `<p class="tp-note">${usTag} ${s.priceSource === "mixed"
         ? `Einige Karten haben noch keinen Cardmarket-Preis. Bei diesen (mit „US“ markiert) steht der TCGplayer-Marktpreis aus den USA, ${fxNote(s.fx ?? data.fx)}, ohne Ø 7 Tage.`
         : `Noch keine Cardmarket-Preise: Die Preise sind TCGplayer-Marktpreise aus den USA, ${fxNote(s.fx ?? data.fx)}. Spalte Ø 7 Tage bleibt dann leer.`} Sobald Cardmarket Preise hat, werden diese automatisch genommen.</p>` : ""}
-      <div class="table-scroll"><table>${tableHead(true)}<tbody>${cards.map(([c, i]) => cardRow(c, i)).join("")}</tbody></table></div>
+      ${lazy ? `<div class="set-lazy" data-rows="${cards.length}" style="min-height:${cards.length * 60 + 40}px"></div>` : table()}
     </section>`);
   }
   document.getElementById("sets").innerHTML = out.length
     ? `<div style="display:grid;gap:28px">${out.join("")}</div>`
     : '<div class="status">Keine Karte gefunden. Suchbegriff oder Set-Auswahl ändern.</div>';
   drawMovers(!setId && !q);
+  lazyWatch();
+}
+
+// Nur die ersten Sets sofort zeichnen, die übrigen, sobald man in ihre Nähe scrollt
+const LAZY_FIRST = 2;
+const lazySets = new Map(); // Abschnitts-ID -> Funktion, die die Tabelle liefert
+let lazyObs = null;
+function fillSet(sec) {
+  const make = sec && lazySets.get(sec.id);
+  if (!make) return;
+  lazySets.delete(sec.id);
+  const ph = sec.querySelector(".set-lazy");
+  if (!ph) return;
+  // Liegt der Platzhalter oberhalb des sichtbaren Bereichs, die Höhenänderung ausgleichen, damit nichts springt
+  const above = ph.getBoundingClientRect().top < 0, before = sec.offsetHeight;
+  ph.outerHTML = make();
+  if (above) { const d = sec.offsetHeight - before; if (d) window.scrollBy({ top: d, behavior: "instant" }); }
+}
+function lazyWatch() {
+  lazyObs?.disconnect();
+  const holders = document.querySelectorAll("#sets .set-lazy");
+  if (!holders.length) return;
+  // Platzhalter so hoch wie die echte Tabelle (an der ersten gezeichneten gemessen), damit beim Scrollen nichts springt
+  const body = document.querySelector("#sets tbody"), head = document.querySelector("#sets thead");
+  if (body?.rows.length && head) {
+    const rowH = body.offsetHeight / body.rows.length; // Durchschnitt, weil lange Namen umbrechen
+    for (const h of holders) h.style.minHeight = `${Math.round(Number(h.dataset.rows) * rowH + head.offsetHeight)}px`;
+  }
+  if (!("IntersectionObserver" in window)) { for (const h of holders) fillSet(h.closest("section")); return; }
+  lazyObs = new IntersectionObserver((list) => {
+    for (const x of list) if (x.isIntersecting) { lazyObs.unobserve(x.target); fillSet(x.target.closest("section")); }
+  }, { rootMargin: "1500px 0px" });
+  for (const h of holders) lazyObs.observe(h);
 }
 
 // ---------- Schnellsuche über alle Karten ----------
@@ -737,8 +778,13 @@ let asiaState = "idle";   // idle | loading | ready | missing
 let speciesAlias = new Map(); // gefalteter Name -> Pokémon-Nummer
 let speciesLabel = new Map(); // Nummer -> { de, en, ja, ko, zh }
 
-const fold = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[-'’.:]/g, " ").replace(/\s+/g, " ").trim();
-const normNo = (no) => String(no ?? "").toUpperCase().replace(/^([A-Z]*)0+(?=\d)/, "$1");
+const fold = (t) => {
+  let x = String(t ?? "").toLowerCase();
+  // Akzente nur entfernen, wenn es welche gibt (normalize ist teuer, die meisten Namen sind reines ASCII)
+  if (/[^\x00-\x7f]/.test(x)) x = x.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return x.replace(/[-'’.:]/g, " ").replace(/\s+/g, " ").trim();
+};
+const normNo = (no) => { const x = String(no ?? ""); return /^[1-9]\d*$/.test(x) ? x : x.toUpperCase().replace(/^([A-Z]*)0+(?=\d)/, "$1"); };
 
 // Sprach-Wörter in der Suche
 const LANG_WORDS = {
@@ -757,17 +803,30 @@ const LANG_LABEL = { de: "Deutsch", en: "Englisch", ja: "Japanisch", ko: "Korean
 const BADGE = { intl: "DE/EN", ja: "JP", ko: "KR", "zh-tw": "CN", "zh-cn": "CN" };
 const groupOf = (c) => (c.L ? (c.L.startsWith("zh") ? "zh" : c.L) : "intl");
 
+const foldCache = new Map(); // Seltenheiten wiederholen sich tausendfach
+const foldCached = (t) => { let v = foldCache.get(t); if (v === undefined) { v = fold(t); foldCache.set(t, v); } return v; };
 function indexCards(cards) {
-  for (const c of cards) c._hay = fold(`${c.n} ${c.e ?? ""} ${c.k ?? ""}`);
-  markShared(cards, (c) => c.s, (c) => c.u);
+  indexCardFields(cards);
+  markShared(cards, (c) => c.s, (c) => c._pid);
 }
+function indexCardFields(cards) {
+  for (const c of cards) {
+    c._hay = c.e || c.k ? `${foldCached(c.n)} ${c.e ? foldCached(c.e) : ""} ${c.k ?? ""}`.replace(/\s+/g, " ").trim() : foldCached(c.n);
+    c._no = normNo(c.no);
+    c._r = c.r ? foldCached(c.r) : "";
+    if (c.pn) { const [a, b] = String(c.pn).split("/"); c._pn = normNo(a); c._pnTot = Number(b); }
+    c._pid = /idProduct=(\d+)/.exec(c.u ?? "")?.[1] ?? null;
+  }
+}
+const indexSet = (st) => { st._hay = fold(`${st.name} ${st.ne ?? ""} ${st.ab ?? ""}`); st._w = new Set(st._hay.split(" ")); };
 
 // Zwei Karten eines Sets mit demselben Cardmarket-Produkt (Fehler in der Datenquelle,
 // meist Holo und normale Version): Preis gilt nur für eine davon -> "unsicher"
 function markShared(cards, setOf, urlOf) {
   const seen = new Map();
   for (const c of cards) {
-    const id = /idProduct=(\d+)/.exec(urlOf(c) ?? "")?.[1];
+    const u = urlOf(c);
+    const id = /^\d+$/.test(u ?? "") ? u : /idProduct=(\d+)/.exec(u ?? "")?.[1];
     if (!id) continue;
     const k = `${setOf(c)}|${id}`;
     const first = seen.get(k);
@@ -824,9 +883,8 @@ const ebayLink = (c, lang) => `<a class="cm-link" href="${esc(ebayUrl(c, lang))}
 // japanischen Karte zuordnet: Der Preis ist dann der der japanischen Karte.
 function markJpShared() {
   const ja = new Set();
-  const pid = (c) => /idProduct=(\d+)/.exec(c.u ?? "")?.[1];
-  for (const c of quickData.cards) if (c.L === "ja") { const p = pid(c); if (p) ja.add(p); }
-  for (const c of quickData.cards) if (c.L && c.L !== "ja") { const p = pid(c); c._jp = Boolean(p && ja.has(p)); }
+  for (const c of quickData.cards) if (c.L === "ja" && c._pid) ja.add(c._pid);
+  for (const c of quickData.cards) if (c.L && c.L !== "ja") c._jp = Boolean(c._pid && ja.has(c._pid));
 }
 
 // Datenstand vom Server (kleine Datei, nie zwischengespeichert). Damit erkennt der Handy-Speicher
@@ -847,22 +905,27 @@ async function loadQuick() {
     for (const a of aliases) if (!speciesAlias.has(a)) speciesAlias.set(a, id);
   }
   indexCards(all.cards);
-  for (const st of all.sets) st._hay = fold(`${st.name} ${st.ne ?? ""} ${st.ab ?? ""}`);
+  for (const st of all.sets) indexSet(st);
   quickData = all;
   // Asiatische und ältere Karten im Hintergrund nachladen (die aktuelle Suche geht schon)
   asiaState = "loading";
   oldState = "loading";
-  const merge = (part) => {
+  const pause = () => (globalThis.scheduler?.yield ? scheduler.yield() : new Promise((r) => setTimeout(r, 0)));
+  const merge = async (part) => {
     const off = quickData.sets.length;
-    for (const st of part.sets) { st._hay = fold(`${st.name} ${st.ne ?? ""} ${st.ab ?? ""}`); quickData.sets.push(st); }
+    for (const st of part.sets) indexSet(st);
     for (const c of part.cards) c.s += off;
-    indexCards(part.cards);
-    quickData.cards.push(...part.cards);
-    markJpShared();
+    const STEP = 3000;
+    for (let i = 0; i < part.cards.length; i += STEP) { indexCardFields(part.cards.slice(i, i + STEP)); await pause(); }
+    markShared(part.cards, (c) => c.s, (c) => c._pid);
+    await pause();
+    for (const st of part.sets) quickData.sets.push(st);
+    for (const c of part.cards) quickData.cards.push(c);
+    if (part.cards.some((c) => c.L)) markJpShared(); // nur asiatische Karten brauchen den Abgleich
   };
   const extra = (file, done) => dataUrl(file.replace("data/", "")).then((u) => fetch(u, { cache: "no-cache" }))
     .then((r) => (r.ok ? r.json() : Promise.reject()))
-    .then((part) => { merge(part); done("ready"); })
+    .then((part) => merge(part)).then(() => done("ready"))
     .catch(() => done("missing"))
     .finally(() => { updateQuickHint(); renderQuick(); if (view === "archive") renderArchive(); if (view === "collection") renderCollection(); });
   extra("data/asia.json", (st) => { asiaState = st; })
@@ -953,33 +1016,41 @@ function quickSearch(query) {
   const wantGroup = q.lang === "de" || q.lang === "en" ? "intl" : q.lang;
   const hits = [];
   const wantSealed = q.words.some((w) => SEALED_WORDS.has(w));
+  const numWord = q.num != null ? q.num.toLowerCase() : null;
+  const sets = quickData.sets, nSpecies = q.species.length, words = q.words, nWords = words.length;
+  const prefer = snapPrefer && snapPrefer.q === query ? snapPrefer.id : null;
   for (const c of quickData.cards) {
     if (isSealed(c) && !wantSealed) continue;
     if (wantGroup && groupOf(c) !== wantGroup) continue;
-    const set = quickData.sets[c.s];
+    const set = sets[c.s];
     let score = 0;
-    if (q.species.length) {
-      if (!c.p || !q.species.every((id) => c.p.includes(id))) continue;
+    if (nSpecies) {
+      const p = c.p;
+      if (!p) continue;
+      let all = true;
+      for (let i = 0; i < nSpecies; i++) if (!p.includes(q.species[i])) { all = false; break; }
+      if (!all) continue;
       score += 10;
     }
-    if (q.num != null) {
-      const [pnNo, pnTot] = c.pn ? String(c.pn).split("/") : [];
-      const samePn = Boolean(c.pn) && normNo(pnNo) === q.num;
-      const sameNo = normNo(c.no) === q.num || samePn;
+    if (numWord != null) {
+      const samePn = c._pn === q.num;
+      const sameNo = c._no === q.num || samePn;
       if (sameNo) score += 10;
       // Zahl kann auch der Set-Name sein (z. B. "151"), aber nur als ganzes Wort
-      else if (!set._hay.split(" ").includes(q.num.toLowerCase())) continue;
-      if (q.total != null && sameNo && (samePn ? Number(pnTot) === q.total : set.off === q.total)) score += 5;
+      else if (!set._w.has(numWord)) continue;
+      if (q.total != null && sameNo && (samePn ? c._pnTot === q.total : set.off === q.total)) score += 5;
     }
     let ok = true;
-    for (const t of q.words) {
+    for (let i = 0; i < nWords; i++) {
+      const t = words[i];
       if (c._hay.includes(t)) score += 2;
-      else if (set._hay.includes(t) || fold(c.r).includes(t)) score += 1;
+      else if (set._hay.includes(t) || c._r.includes(t)) score += 1;
       else { ok = false; break; }
     }
-    if (ok && rarityPref && c.r && rarityPref.test(c.r)) score += 4;
-    if (ok && snapPrefer && snapPrefer.q === query && snapPrefer.id === c.i) score += 100;
-    if (ok) hits.push([score, c]);
+    if (!ok) continue;
+    if (rarityPref && c.r && rarityPref.test(c.r)) score += 4;
+    if (prefer === c.i) score += 100;
+    hits.push([score, c]);
   }
   hits.sort((a, b) => b[0] - a[0] || (b[1].a30 ?? -1) - (a[1].a30 ?? -1));
   return { q, list: hits.slice(0, 40).map((h) => h[1]), total: hits.length };
@@ -988,7 +1059,8 @@ function quickSearch(query) {
 const ARTWORK = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/";
 
 // Karten ohne Cardmarket-Preis: TCGplayer-Marktpreis (USA), zum EZB-Kurs in Euro umgerechnet
-const fmtUsd = (v) => (v == null ? "–" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "USD" }).format(v));
+const usd = new Intl.NumberFormat("de-DE", { style: "currency", currency: "USD" });
+const fmtUsd = (v) => (v == null ? "–" : usd.format(v));
 const fxNote = (fx) => (fx?.usd ? `zum EZB-Kurs vom ${fmtDate(fx.date)} (1 € = ${String(fx.usd).replace(".", ",")} $)` : "in Euro umgerechnet");
 const isTp = (c) => c?.x === "tp" || c?.src === "tcgplayer";
 const usTag = '<span class="us-tag" title="TCGplayer-Marktpreis (USA), in Euro umgerechnet">US</span>';
@@ -999,8 +1071,11 @@ function priceCell(label, v, key = false) {
 
 // ---------- "Bieten bis": Höchstgebot aus Marktpreis, Marge, Versand und Gebühren ----------
 const BID_DEFAULT = { base: "a30", margin: 20, ship: 0, fee: 0 };
+let bidCache = null;
 function bidSettings() {
-  try { return { ...BID_DEFAULT, ...JSON.parse(localStorage.getItem("bidSet") ?? "{}") }; } catch { return { ...BID_DEFAULT }; }
+  if (bidCache) return bidCache;
+  try { bidCache = { ...BID_DEFAULT, ...JSON.parse(localStorage.getItem("bidSet") ?? "{}") }; } catch { bidCache = { ...BID_DEFAULT }; }
+  return bidCache;
 }
 function bidFor(c) {
   const b = bidSettings();
@@ -1031,6 +1106,7 @@ function bidInit() {
     const s = { base: el("bid-base").value, margin: Math.min(90, Math.max(0, Number(el("bid-margin").value) || 0)),
       ship: colNum(el("bid-ship").value) ?? 0, fee: Math.min(50, Math.max(0, Number(String(el("bid-fee").value).replace(",", ".")) || 0)) };
     try { localStorage.setItem("bidSet", JSON.stringify(s)); } catch {}
+    bidCache = s;
     sum();
     renderQuick();
   };
@@ -1965,6 +2041,7 @@ let archLastId = null;     // zuletzt gespeicherter Scan, für "Diese ist es"
 let archLastQuery = "";
 let archPickedI = null;    // in der Trefferliste als richtig markierte Karte
 let archIdx = null;        // Karten-ID -> aktuelle Kartendaten
+let archIdxN = -1;         // Kartenzahl, für die der Index gebaut wurde
 
 function archDb() {
   archDbP ??= new Promise((res, rej) => {
@@ -2052,7 +2129,11 @@ async function archSetCard(card, exact) {
 
 function archCurrent(card) {
   if (!card || !quickData) return null;
-  if (!archIdx || archIdx.size !== quickData.cards.length) archIdx = new Map(quickData.cards.map((c) => [c.i, c]));
+  if (!archIdx || archIdxN !== quickData.cards.length) {
+    archIdx = new Map();
+    for (const c of quickData.cards) archIdx.set(c.i, c);
+    archIdxN = quickData.cards.length;
+  }
   return archIdx.get(card.i) ?? null;
 }
 
@@ -2062,7 +2143,8 @@ function archWhen(e) {
   if (!e.photoAt || new Date(e.at) - new Date(e.photoAt) < 10 * 60 * 1000) return scan;
   return `Foto vom ${fmtDateTime(e.photoAt)} · ins Archiv am ${fmtDateTime(e.at)}`;
 }
-const fmtDateTime = (iso) => new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const dateTimeFmt = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmtDateTime = (iso) => dateTimeFmt.format(new Date(iso));
 
 async function renderArchive() {
   const list = document.getElementById("arch-list");
@@ -2108,13 +2190,14 @@ async function renderArchive() {
     list.innerHTML = '<div class="status">Noch keine Karten im Archiv. Jede Karte, die du über „Bild erkennen“, „Foto machen“ oder das Teilen-Menü erkennen lässt, landet automatisch hier.</div>';
     return;
   }
-  list.innerHTML = entries.map((e) => {
+  const archMore = entries.length - archLimit;
+  list.innerHTML = entries.slice(0, archLimit).map((e) => {
     const c = e.card;
     const now = archCurrent(c);
     const rec = e.rec ?? {};
     const recDesc = [rec.card_name || rec.pokemon_de, rec.number && `Nr. ${rec.number}`, rec.set_hint].filter(Boolean).map(esc).join(" · ");
     if (!c) {
-      return `<article class="arch-item"><img class="arch-thumb" src="${esc(e.thumb)}" alt="Scan">
+      return `<article class="arch-item"><img class="arch-thumb" loading="lazy" decoding="async" src="${esc(e.thumb)}" alt="Scan">
         <div class="qbody"><div class="qname">${esc(rec.pokemon_de || rec.card_name || "Unbekannte Karte")}</div>
         <div class="qmeta">${archWhen(e)} · erkannt: ${recDesc || "–"}</div>
         <div class="qnone">Keine passende Karte in der Datenbank gefunden.</div>
@@ -2122,7 +2205,7 @@ async function renderArchive() {
     }
     const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
     const then30 = c.a30, now30 = now?.a30 ?? null;
-    return `<article class="arch-item"><img class="arch-thumb" src="${esc(e.thumb)}" alt="Scan von ${esc(c.n)}">
+    return `<article class="arch-item"><img class="arch-thumb" loading="lazy" decoding="async" src="${esc(e.thumb)}" alt="Scan von ${esc(c.n)}">
       <div class="qbody">
         <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(c.n)}${c.e && c.e !== c.n ? ` <small>(${esc(c.e)})</small>` : ""}${e.exact ? "" : ' <span class="arch-unsure">unsicher</span>'}</div>
         <div class="qmeta">${set}</div>
@@ -2137,8 +2220,10 @@ async function renderArchive() {
           ${ebayLink(c, c.L)}
           <button type="button" class="arch-btn" data-arch-del="${e.id}">Löschen</button></div>
       </div></article>`;
-  }).join("");
+  }).join("") + (archMore > 0 ? `<button type="button" class="more-btn" id="arch-more">Weitere ${Math.min(ARCH_PAGE, archMore)} anzeigen (${archLimit.toLocaleString("de-DE")} von ${entries.length.toLocaleString("de-DE")})</button>` : "");
 }
+const ARCH_PAGE = 40;
+let archLimit = ARCH_PAGE;
 
 // Archiv-Suche: gleiche Eingabe wie die Schnellsuche (Name in jeder Sprache, Sprache, Nummer, Set)
 function archMatch(e, q) {
@@ -2177,8 +2262,9 @@ function archCsv(entries) {
 function archInit() {
   archUpdateCount();
   let archT;
-  document.getElementById("arch-search").addEventListener("input", () => { clearTimeout(archT); archT = setTimeout(renderArchive, 120); });
+  document.getElementById("arch-search").addEventListener("input", () => { clearTimeout(archT); archT = setTimeout(() => { archLimit = ARCH_PAGE; renderArchive(); }, 120); });
   document.getElementById("arch-list").addEventListener("click", async (e) => {
+    if (e.target.closest("#arch-more")) { archLimit += ARCH_PAGE; return renderArchive(); }
     const del = e.target.closest("[data-arch-del]");
     if (del) { await archDel(Number(del.dataset.archDel)); archUpdateCount(); renderArchive(); return; }
     if (e.target.closest("[data-col-go]")) return document.getElementById("view-collection").click();
@@ -2372,8 +2458,9 @@ function screenInit() {
 const colPut = (e) => archTx("readwrite", (s) => s.put(e), "sammlung");
 const colDel = (id) => archTx("readwrite", (s) => s.delete(id), "sammlung");
 const colAll = async () => ((await archTx("readonly", (s) => s.getAll(), "sammlung")) ?? []).sort((a, b) => b.id - a.id);
-const valAll = async () => ((await archTx("readonly", (s) => s.getAll(), "wert")) ?? []).sort((a, b) => a.d.localeCompare(b.d));
-const valPut = (v) => archTx("readwrite", (s) => s.put(v), "wert");
+let valCache = null;
+const valAll = async () => (valCache ??= ((await archTx("readonly", (s) => s.getAll(), "wert")) ?? []).sort((a, b) => a.d.localeCompare(b.d)));
+const valPut = (v) => { valCache = null; return archTx("readwrite", (s) => s.put(v), "wert"); };
 let colCards = new Set();   // Karten-IDs in der Sammlung (für die Knöpfe in Suche und Archiv)
 let colArch = new Set();    // Archiv-Einträge, die schon in der Sammlung sind
 let colDelAsk = null;       // Eintrag, bei dem "Entfernen" einmal gedrückt wurde
@@ -2403,7 +2490,7 @@ function colBtn(c) {
 const colNum = (v) => { const n = Number(String(v ?? "").replace(/[€\s]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".")); return v === "" || v == null || !Number.isFinite(n) ? null : n; };
 const colNow = (e) => { const c = archCurrent(e.card); return c ? impPrice(c, e.variant) : null; }; // Marktpreis (Verlauf, Performance)
 const colKey = (e) => (e.variant === "Reverse Holo" ? `${e.card.i}|rh` : e.card.i);
-const COL_PAGE = 60;
+const COL_PAGE = 40;
 let colLimit = COL_PAGE;   // so viele Karten werden in der Liste gezeigt, Rest per "Weitere anzeigen"
 let colOrder = [];         // Reihenfolge der zuletzt gezeigten Liste (für Sprünge aus dem Ranking)
 const colVal = (e) => (e.own != null ? e.own : unsurePrice(archCurrent(e.card)) ? null : colNow(e)); // zählt für Wert, Ranking, Gewinn
@@ -2412,9 +2499,12 @@ const colVal = (e) => (e.own != null ? e.own : unsurePrice(archCurrent(e.card)) 
 async function colSnapshot(total, paid, n, entries) {
   if (!quickData?.updated || asiaState === "loading" || oldState === "loading") return;
   const prices = {};
-  for (const e of entries) { const v = colNow(e); if (v != null) prices[colKey(e)] = v; }
-  try { await valPut({ d: quickData.updated.slice(0, 10), v: Math.round(total * 100) / 100, paid, n, p: prices }); } catch {}
+  let sig = `${quickData.updated}|${Math.round(total * 100)}|${paid}|${n}|${entries.length}`;
+  for (const e of entries) { const v = colNow(e); if (v != null) { prices[colKey(e)] = v; sig += `|${e.id}:${v}`; } }
+  if (sig === colSnapSig) return; // nichts geändert: nicht erneut speichern
+  try { await valPut({ d: quickData.updated.slice(0, 10), v: Math.round(total * 100) / 100, paid, n, p: prices }); colSnapSig = sig; } catch {}
 }
+let colSnapSig = "";
 
 // Performance je Karte: Ø 30 Tage heute gegen den Preis vor 1 / 7 / 30 / 365 Tagen.
 // Quelle: tägliche Preise auf diesem Gerät, dazu der Preis beim Hinzufügen. Reicht der Verlauf
@@ -2422,18 +2512,38 @@ async function colSnapshot(total, paid, n, entries) {
 const PERIODS = [["tag", "Tag", 1], ["woche", "Woche", 7], ["monat", "Monat", 30], ["jahr", "Jahr", 365]];
 let colSort = "";
 let colRankAll = false;
-const dayMinus = (d, n) => new Date(Date.parse(d + "T00:00:00Z") - n * 86400000).toISOString().slice(0, 10);
-const fmtDay = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+const dayMinusCache = new Map();
+const dayMinus = (d, n) => {
+  const k = d + n;
+  let v = dayMinusCache.get(k);
+  if (!v) { v = new Date(Date.parse(d + "T00:00:00Z") - n * 86400000).toISOString().slice(0, 10); dayMinusCache.set(k, v); }
+  return v;
+};
+const fmtDay = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
 
 function colPerf(e, now, hist, today) {
   const out = {};
   if (now == null || !today) return out;
-  const pts = [{ d: e.at.slice(0, 10), v: impPrice(e.card, e.variant) }, ...hist.map((h) => ({ d: h.d, v: h.p?.[colKey(e)] }))]
-    .filter((x) => x.v != null && x.d < today).sort((a, b) => a.d.localeCompare(b.d));
-  if (!pts.length) return out;
+  const key = colKey(e);
+  // Preis beim Hinzufügen und Verlauf (aufsteigend nach Datum), jeweils nur vor dem heutigen Preistag
+  const addD = e.at.slice(0, 10), addV = addD < today ? impPrice(e.card, e.variant) : null;
+  const add = addV != null ? { d: addD, v: addV } : null;
+  let end = hist.length;
+  while (end > 0 && hist[end - 1].d >= today) end--;
+  let first = null;
+  for (let i = 0; i < end; i++) { const v = hist[i].p?.[key]; if (v != null) { first = { d: hist[i].d, v }; break; } }
+  if (!first && !add) return out;
+  const oldest = add && (!first || add.d <= first.d) ? add : first;
   for (const [k, , n] of PERIODS) {
     const target = dayMinus(today, n);
-    const ref = pts.filter((x) => x.d <= target).at(-1) ?? pts[0];
+    let ref = null;
+    for (let i = end - 1; i >= 0; i--) {
+      if (hist[i].d > target) continue;
+      const v = hist[i].p?.[key];
+      if (v != null) { ref = { d: hist[i].d, v }; break; }
+    }
+    if (add && add.d <= target && (!ref || add.d > ref.d)) ref = add;
+    ref ??= oldest;
     const p = pct(now, ref.v);
     if (p != null) out[k] = { p, eur: (now - ref.v) * (e.qty || 1), since: ref.d, full: ref.d <= target };
   }
@@ -2461,7 +2571,8 @@ async function renderCollection() {
   const search = document.getElementById("col-search");
   search.hidden = !all.length;
   const qs = search.value.trim();
-  const entries = qs ? all.filter((e) => archMatch(e, parseQuery(qs))) : [...all];
+  const colQ = qs ? parseQuery(qs) : null;
+  const entries = colQ ? all.filter((e) => archMatch(e, colQ)) : [...all];
 
   // Werte: Ø 30 Tage heute × Anzahl; Gewinn nur für Karten mit Kaufpreis
   let total = 0, missing = 0, unsure = 0, own = 0, paid = 0, paidNow = 0, paidCount = 0, pieces = 0, pulled = 0, pulledEntries = 0, pulledValue = 0, boughtNow = 0;
@@ -3162,6 +3273,7 @@ async function init() {
     const setId = btn.closest("section.set, #movers")?.id;
     const top = btn.getBoundingClientRect().top;
     render();
+    if (setId) fillSet(document.getElementById(setId));
     const again = setId && document.querySelector(`#${CSS.escape(setId)} [data-sort="${key}"]`);
     if (again) { window.scrollBy(0, again.getBoundingClientRect().top - top); again.focus({ preventScroll: true }); }
   });

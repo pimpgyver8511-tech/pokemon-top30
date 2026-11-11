@@ -944,6 +944,9 @@ async function main() {
       old.sets.push(...part.sets);
       old.cards.push(...part.cards);
     }
+    // Manche japanischen Sets liefert TCGdex doppelt: jede Karten-ID nur einmal
+    const seenOld = new Set();
+    old.cards = old.cards.filter((c) => !seenOld.has(c.i) && seenOld.add(c.i));
     await writeFile(path.join(OUT_DIR, "old.json"), JSON.stringify({ updated: now.toISOString(), ...old }));
     console.log(`Ältere Karten gesamt: ${old.cards.length}, davon ${old.cards.filter((c) => c.a30).length} mit Preis`);
   } catch (err) {

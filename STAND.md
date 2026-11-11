@@ -75,6 +75,14 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - **Sealed-Produkte** (`docs/data/sealed.json`, aus Cardmarkets `products_nonsingles_6.json` + Preisliste): Displays, Booster, Top-Trainer-Boxen, Kollektionen, Tins, Themendecks, Blister, Münzen … Zuordnung zum Set über den englischen Set-Namen im Produktnamen (längster Treffer), sonst Gruppe „Sealed-Produkte“. Cardmarket liefert für Sealed nur Trend, Durchschnitt und Ab-Preis; „Ø 30“ ist hier der Trend. In der Schnellsuche nur, wenn ein Produktwort in der Suche steht (display, box, booster, etb, ttb, tin, kollektion, sealed …), damit „Glurak“ weiter Karten zeigt. Sammlung und Archiv nehmen Sealed mit (Wert = Trend).
 - **Mehrere Karten auf einem Foto:** Die Bilderkennung liefert bis zu 20 Karten (Leserichtung, `kind` card/sealed). Bei mehr als einer Karte erscheint eine Liste mit Häkchen, Preis je Karte und Gesamtwert; „Ausgewählte in die Sammlung“ / „Ausgewählte ins Archiv“. Gilt für Fotos und Screenshots, nicht für „Bildschirm mitlesen“.
 
+## Tempo (11.11.2026)
+
+- **Ursache der Hänger:** `archCurrent` baute den Karten-Index (46.000 Karten) bei jedem Aufruf neu, weil er die Indexgröße mit der Kartenzahl verglich und `old.json` 58 doppelte IDs hatte (japanisches Set BW8a doppelt bei TCGdex). Sammlung mit 20 Karten: 3,2 s → 14 ms; mit 400 Karten lief sie gar nicht mehr durch. Jetzt Zähler `archIdxN`; der Lauf entfernt doppelte IDs.
+- Startseite: nur die ersten 2 Sets sofort, die übrigen beim Heranscrollen (`lazySets`, `fillSet`, `lazyWatch`; Platzhalter in gemessener Höhe, Höhenausgleich oberhalb des Bildschirms). 18.300 → 1.600 Elemente, 1.019 → 70 Bilder; längster Hänger beim Start (5-fach gedrosselt) 1.170 → 250 ms. Kartenbilder in Tabellen mit fester Höhe.
+- Schnellsuche: Felder je Karte einmal beim Laden vorbereitet (`_no`, `_pn`, `_r`, `_pid`, Set-Wörter `_w`), `fold` mit schnellem Weg für ASCII und Zwischenspeicher; nachgeladene Dateien werden in Häppchen von 3.000 Karten vorbereitet (`scheduler.yield`).
+- Sammlung: Wertverlauf im Speicher (`valCache`), Tages-Snapshot nur bei Änderung, `colPerf` ohne Zwischenlisten, 40 statt 60 Karten pro Seite. Archiv: 40 pro Seite mit „Weitere anzeigen“.
+- Vergleichstest alt/neu: 40 Suchen, Sammlungswerte und Performance identisch.
+
 ## Offen
 
 1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
