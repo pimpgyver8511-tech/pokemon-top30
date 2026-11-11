@@ -83,6 +83,15 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - Sammlung: Wertverlauf im Speicher (`valCache`), Tages-Snapshot nur bei Änderung, `colPerf` ohne Zwischenlisten, 40 statt 60 Karten pro Seite. Archiv: 40 pro Seite mit „Weitere anzeigen“.
 - Vergleichstest alt/neu: 40 Suchen, Sammlungswerte und Performance identisch.
 
+## Erkennung Stufe 2 (11.11.2026)
+
+- **Lage jeder Karte:** Die Erkennung liefert je Karte `box` (x, y, w, h in Promille des Bildes; Pixelangaben werden erkannt und umgerechnet) und `grade`. `snapBoxPx` rechnet auf das Originalbild um (prüft Größe und Seitenverhältnis), `snapCrop` schneidet aus. Das Original bleibt bis zum Ende der Erkennung als `ImageBitmap` im Speicher.
+- **Nachlesen in voller Auflösung** (`snapZoomTargets`, `snapZoom`): Karten, die nicht sicher zugeordnet sind (Nummer nicht gelesen, nicht genau getroffen oder „unsicher“), werden als Ausschnitt aus dem Original (lange Seite 1280 px, bis 3-fach vergrößert) noch einmal gelesen, höchstens 12 je Bild, 4 gleichzeitig, immer mit Haiku 5.5. Übernommen wird die neue Lesung nur, wenn es dasselbe Pokémon ist und sie besser zur Datenbank passt (`snapScore`). Nicht beim „Bildschirm mitlesen“ und nicht, wenn die Karte das Bild ohnehin füllt.
+- Hochgeladenes Bild: „Genau“ 1600 px, „Schnell“ 1280 px lange Seite. Eine gemeinsame Anfrage-Funktion `snapAsk` (max_tokens 8000, meldet zu lange Antworten).
+- **Gegradete Karten:** Etikett (PSA/BGS/CGC …) wird gelesen und auf „PSA 10“ normalisiert (`snapGrade`); Anzeige mit Links zu PriceCharting und eBay verkauft, Note wird beim Übernehmen in die Sammlung eingetragen.
+- **Mehrere Karten:** jede Zeile mit eigenem Ausschnitt (auch als Foto in Sammlung/Archiv), nur sicher zugeordnete vorausgewählt, „unsicher“ mit „Prüfen“-Knopf, gelernte Korrekturen gelten je Karte (`snapResolve`). Bildvergleich („Genau“) nutzt den Ausschnitt der Karte.
+- Getestet mit nachgebauten Antworten (Binderseite mit 4 Karten, kleine Karte im Screenshot, gegradete Einzelkarte); echte Trefferquote der Lageangaben muss sich am Handy zeigen.
+
 ## Offen
 
 1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren
