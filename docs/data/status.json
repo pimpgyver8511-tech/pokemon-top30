@@ -1,6 +1,6 @@
 {
- "updated": "2026-11-10T22:13:39.552Z",
- "seconds": 933,
+ "updated": "2026-11-11T10:03:02.107Z",
+ "seconds": 964,
  "sets": [
   "me06",
   "30th-c",
@@ -46,7 +46,6 @@
   "Celebrations: Classic Collection (cel25c): 25 Karten bei pokemontcg.io, aber keine mit Cardmarket-Ø30. Beispiele: Charizard 4: null | Blastoise 2: null",
   "  TCGplayer: keine passende Gruppe für McDonald's Collection 2021 (2021-02-09)",
   "Verborgenes Schicksal Glitzer-Tresor (sma): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/cards?q=set.id%3Asma&page=1&pageSize=250&select=id,number,cardmarket,images: HTTP 502",
   "  TCGplayer ref-sm10: 1 Karten ohne Zuordnung, z. B. 172 Fairy Charm Lightning",
   "  TCGplayer: keine passende Gruppe für Teams Sind Trumpf (2019-01-31)",
   "  TCGplayer ref-sm8: 11 Karten ohne Zuordnung, z. B. 19 Celebi ◇ | 144 Xerneas ◇ | 154 Ditto ◇ | 174 Fairy Charm Grass | 175 Fairy Charm Psychic | 176 Fairy Charm Fighting | 177 Fairy Charm Dragon | 178 Heat Factory ◇",
@@ -59,7 +58,7 @@
   "  TCGplayer: keine passende Gruppe für Evolution (2016-11-02)",
   "  TCGplayer ref-xy10: 4 Karten ohne Zuordnung, z. B. 43 Regirock EX | 54a Zygarde EX | 105a N | 111 Shauna",
   "XY trainer Kit (Pikachu Libre) (tk-xy-p): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io: kein Set \"XY trainer Kit (Pikachu Libre)\" gefunden",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22XY%20trainer%20Kit%20(Pikachu%20Libre)%22: HTTP 500",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Pikachu Libre) (2016-04-27)",
   "XY trainer Kit (Suicune) (tk-xy-su): keine Preise bei TCGdex – versuche pokemontcg.io",
   "  pokemontcg.io: kein Set \"XY trainer Kit (Suicune)\" gefunden",
@@ -106,7 +105,7 @@
   "Gym Challenge (gym2): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Gym Heroes (gym1): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Miscellaneous Promos (miscp): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io: kein Set \"Miscellaneous Promos\" gefunden",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22Miscellaneous%20Promos%22: HTTP 500",
   "  TCGplayer: keine passende Gruppe für Miscellaneous Promos (1996-01-01)"
  ]
 }
