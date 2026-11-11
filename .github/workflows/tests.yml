@@ -14,7 +14,8 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Fest auf 24.04: "ubuntu-latest" ist inzwischen 26.04, das Playwright 1.56 nicht unterstützt
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
