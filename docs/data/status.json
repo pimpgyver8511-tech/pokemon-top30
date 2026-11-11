@@ -1,6 +1,6 @@
 {
- "updated": "2026-11-11T10:03:02.107Z",
- "seconds": 964,
+ "updated": "2026-11-11T12:47:22.354Z",
+ "seconds": 1203,
  "sets": [
   "me06",
   "30th-c",
@@ -58,7 +58,7 @@
   "  TCGplayer: keine passende Gruppe für Evolution (2016-11-02)",
   "  TCGplayer ref-xy10: 4 Karten ohne Zuordnung, z. B. 43 Regirock EX | 54a Zygarde EX | 105a N | 111 Shauna",
   "XY trainer Kit (Pikachu Libre) (tk-xy-p): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22XY%20trainer%20Kit%20(Pikachu%20Libre)%22: HTTP 500",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22XY%20trainer%20Kit%20(Pikachu%20Libre)%22: HTTP 502",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Pikachu Libre) (2016-04-27)",
   "XY trainer Kit (Suicune) (tk-xy-su): keine Preise bei TCGdex – versuche pokemontcg.io",
   "  pokemontcg.io: kein Set \"XY trainer Kit (Suicune)\" gefunden",
@@ -84,7 +84,7 @@
   "  TCGplayer ref-xy3: 1 Karten ohne Zuordnung, z. B. 55a M Lucario EX",
   "  TCGplayer: keine passende Gruppe für Flammenmeer (2014-05-07)",
   "XY trainer Kit (Noivern) (tk-xy-n): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io: kein Set \"XY trainer Kit (Noivern)\" gefunden",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22XY%20trainer%20Kit%20(Noivern)%22: HTTP 502",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Noivern) (2014-03-12)",
   "XY trainer Kit (Sylveon) (tk-xy-sy): keine Preise bei TCGdex – versuche pokemontcg.io",
   "  pokemontcg.io: kein Set \"XY trainer Kit (Sylveon)\" gefunden",
@@ -104,8 +104,9 @@
   "  TCGplayer ref-ecard2: 1 Karten ohne Zuordnung, z. B. H02 Arcanine",
   "Gym Challenge (gym2): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Gym Heroes (gym1): keine Preise bei TCGdex – versuche pokemontcg.io",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/cards?q=set.id%3Agym1&page=1&pageSize=250&select=id,number,cardmarket,images: HTTP 503",
   "Miscellaneous Promos (miscp): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22Miscellaneous%20Promos%22: HTTP 500",
+  "  pokemontcg.io: kein Set \"Miscellaneous Promos\" gefunden",
   "  TCGplayer: keine passende Gruppe für Miscellaneous Promos (1996-01-01)"
  ]
 }
