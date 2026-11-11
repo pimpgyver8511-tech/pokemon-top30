@@ -134,6 +134,14 @@ td.img img { width: 52px; height: calc(52px * 342 / 245); object-fit: cover; ove
 .snap-multi-img { width: 34px; height: 47px; object-fit: cover; border-radius: 3px; background: var(--line); display: block; }
 .snap-multi-miss { grid-template-columns: auto minmax(0, 1fr) auto !important; }
 .snap-graded { font-size: .9rem; }
+.snap-cost { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+.snap-cost h4 { margin: 0; font-size: .95rem; }
+.snap-cost h4 small { font-weight: 400; color: var(--muted); }
+.snap-cost-main { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.snap-cost-main b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.snap-cost-months { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: .85rem; color: var(--muted); }
+.snap-cost-months li { display: flex; justify-content: space-between; gap: 8px; }
+.snap-cost p { margin: 0; }
 .snap-multi small { color: var(--muted); }
 .snap-multi-p { font-variant-numeric: tabular-nums; }
 .snap-multi-miss { font-size: .85rem; color: var(--muted); padding-left: 26px; }
@@ -473,6 +481,7 @@ html { scroll-behavior: smooth; }
         </div>
         <p class="quick-hint">Ist eine Karte klein im Bild oder die Nummer nicht sicher lesbar (z. B. Binderseite), wird ihr Ausschnitt in voller Auflösung noch einmal gelesen. Das läuft immer über Haiku und kostet unter 0,1 Cent je Karte.</p>
         <p class="quick-hint" id="snap-key-state"></p>
+        <div id="snap-cost" class="snap-cost"></div>
         <p class="quick-hint">Der Schlüssel bleibt nur auf diesem Gerät gespeichert und wird nur an Anthropic geschickt. Tipp: In der Anthropic Console ein monatliches Ausgabenlimit setzen.</p>
       </div>
       <p id="snap-batch" class="snap-batch" hidden></p>
@@ -912,6 +921,7 @@ async function loadQuick() {
   indexCards(all.cards);
   for (const st of all.sets) indexSet(st);
   quickData = all;
+  snapCostRender();
   // Asiatische und ältere Karten im Hintergrund nachladen (die aktuelle Suche geht schon)
   asiaState = "loading";
   oldState = "loading";
@@ -1709,6 +1719,79 @@ async function snapVisualPick(client, model, img, cands) {
   return c && out.confidence !== "low" ? c : null;
 }
 
+// ---------- Kosten der Bilderkennung ----------
+// Geschätzt aus den Token-Angaben jeder Antwort (usage), nur auf diesem Gerät gezählt. Maßgeblich ist die
+// Abrechnung in der Anthropic Console. Preise in $ pro 1 Mio. Token: [Eingabe, Ausgabe].
+const SNAP_PRICE = {
+  "claude-opus-5-5": [4, 20], "claude-haiku-5-5": [0.1, 0.5], "claude-sonnet-5-5": [2, 10], "claude-sonnet-5": [2, 10],
+  "claude-opus-5": [5, 25], "claude-opus-4-8": [5, 25], "claude-opus-4-7": [5, 25], "claude-fable-5-2": [8, 40],
+};
+const SNAP_PRICE_UNKNOWN = [8, 40]; // unbekanntes Modell (z. B. ein Fallback): lieber zu hoch schätzen
+function snapPriceOf(model) {
+  const m = String(model ?? "");
+  return SNAP_PRICE[m] ?? SNAP_PRICE[Object.keys(SNAP_PRICE).find((k) => m.startsWith(k + "-"))] ?? SNAP_PRICE_UNKNOWN;
+}
+// Kosten einer Antwort in $. Mit server-seitigem Fallback stehen die einzelnen Versuche in usage.iterations.
+function snapUsageUsd(res) {
+  const u = res?.usage ?? {};
+  const parts = Array.isArray(u.iterations) && u.iterations.length ? u.iterations : [u];
+  let usd = 0;
+  for (const x of parts) {
+    let [pin, pout] = snapPriceOf(x.model ?? res?.model);
+    const inTok = x.input_tokens ?? 0, cw = x.cache_creation_input_tokens ?? 0, cr = x.cache_read_input_tokens ?? 0;
+    // Haiku 5.5 kostet bei langen Anfragen (über 100.000 Token) mehr
+    if (String(x.model ?? res?.model).startsWith("claude-haiku-5-5") && inTok + cw + cr > 100000) { pin = 0.5; pout = 2.5; }
+    usd += (inTok * pin + cw * pin * 1.25 + cr * pin * 0.1 + (x.output_tokens ?? 0) * pout) / 1e6;
+  }
+  return usd;
+}
+const SNAP_COST_KEY = "snapCost";
+const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+function snapCostAll() { try { return JSON.parse(localStorage.getItem(SNAP_COST_KEY) ?? "{}") ?? {}; } catch { return {}; } }
+let snapCostRun = { usd: 0, calls: 0 }; // laufende Erkennung (ein Bild)
+function snapCostAdd({ usd = 0, calls = 0, img = 0, model = null }) {
+  snapCostRun.usd += usd; snapCostRun.calls += calls;
+  const all = snapCostAll();
+  const m = (all[monthKey()] ??= { usd: 0, calls: 0, img: 0, m: {} });
+  m.usd += usd; m.calls += calls; m.img += img;
+  if (model && usd) m.m[model] = (m.m[model] ?? 0) + usd;
+  for (const k of Object.keys(all).sort().slice(0, -24)) delete all[k]; // höchstens 2 Jahre
+  try { localStorage.setItem(SNAP_COST_KEY, JSON.stringify(all)); } catch {}
+  snapCostRender();
+}
+// Betrag in Euro (zum Kurs der Tagesdaten), kleine Beträge in Cent
+function fmtCost(usd) {
+  const eur = usd / (quickData?.fx?.usd || 1.1);
+  if (eur > 0 && eur < 0.0001) return "unter 0,01 Cent";
+  if (eur < 0.995) return `${(eur * 100).toFixed(eur < 0.1 ? 2 : 1).replace(".", ",")} Cent`;
+  return fmtPrice(eur);
+}
+const MONTH_NAME = (k) => new Date(Number(k.slice(0, 4)), Number(k.slice(5)) - 1, 1).toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+const SNAP_MODEL_NAME = { "claude-opus-5-5": "Genau (Opus 5.5)", "claude-haiku-5-5": "Schnell und Nachlesen (Haiku 5.5)" };
+function snapCostRender() {
+  const box = document.getElementById("snap-cost");
+  if (!box) return;
+  const all = snapCostAll();
+  const keys = Object.keys(all).sort().reverse();
+  const now = all[monthKey()] ?? { usd: 0, calls: 0, img: 0, m: {} };
+  const total = keys.reduce((s, k) => s + (all[k].usd ?? 0), 0);
+  const per = now.img ? now.usd / now.img : null;
+  const models = Object.entries(now.m ?? {}).sort((a, b) => b[1] - a[1]);
+  box.innerHTML = `<h4>Kosten der Bilderkennung <small>(Schätzung)</small></h4>
+    <div class="snap-cost-main"><span>${esc(MONTH_NAME(monthKey()))}</span><b>${now.img || now.calls ? `ca. ${fmtCost(now.usd)}` : "noch nichts"}</b></div>
+    ${now.img || now.calls ? `<p class="quick-hint">${now.img.toLocaleString("de-DE")} Bild${now.img === 1 ? "" : "er"}, ${now.calls.toLocaleString("de-DE")} Anfrage${now.calls === 1 ? "" : "n"}${per != null ? `, im Schnitt ${fmtCost(per)} pro Bild` : ""}${models.length > 1 ? ` · ${models.map(([k, v]) => `${esc(SNAP_MODEL_NAME[k] ?? k)}: ${fmtCost(v)}`).join(", ")}` : ""}</p>` : ""}
+    ${keys.filter((k) => k !== monthKey()).length ? `<ul class="snap-cost-months">${keys.filter((k) => k !== monthKey()).slice(0, 6).map((k) => `<li><span>${esc(MONTH_NAME(k))}</span><span>${all[k].img} Bilder · ca. ${fmtCost(all[k].usd)}</span></li>`).join("")}</ul>` : ""}
+    ${keys.length > 1 ? `<p class="quick-hint">Seit Beginn der Zählung: ca. ${fmtCost(total)}</p>` : ""}
+    <p class="quick-hint">Aus den Token-Angaben jeder Antwort gerechnet, nur auf diesem Gerät gezählt. Die genaue Abrechnung steht in der Anthropic Console.${keys.length ? ' <button type="button" class="arch-btn" id="snap-cost-reset">Zählung zurücksetzen</button>' : ""}</p>`;
+}
+// Kosten der laufenden Erkennung an die Ergebniszeile hängen
+function snapCostShow() {
+  const el = document.querySelector("#snap-result .snap-conf");
+  if (!el || !snapCostRun.calls) return;
+  const s = el.querySelector(".snap-cost-run");
+  if (s) s.textContent = `, ca. ${fmtCost(snapCostRun.usd)}${snapCostRun.calls > 1 ? ` für ${snapCostRun.calls} Anfragen` : ""}`;
+}
+
 // Eine Bild-Anfrage mit festem Antwortformat. "Schnell" (Haiku) ohne Denkphase, "Genau" (Opus 5.5) mit
 // server-seitigem Fallback, falls ein Sicherheitsfilter fälschlich ablehnt.
 async function snapAsk(client, model, content, { system = SNAP_SYSTEM, schema = SNAP_SCHEMA, maxTokens = 8000 } = {}) {
@@ -1721,6 +1804,7 @@ async function snapAsk(client, model, content, { system = SNAP_SYSTEM, schema = 
   const res = model === SNAP_MODELS.exact
     ? await client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
     : await client.messages.create(params);
+  snapCostAdd({ usd: snapUsageUsd(res), calls: 1, model: res.model ?? model });
   if (res.stop_reason === "refusal") throw Object.assign(new Error("Die Anfrage wurde abgelehnt."), { status: 0, refusal: true });
   if (res.stop_reason === "max_tokens") throw Object.assign(new Error("Die Antwort war zu lang (zu viele Karten auf einem Bild). Bitte weniger Karten auf einmal fotografieren."), { status: 400 });
   return JSON.parse(res.content.find((b) => b.type === "text")?.text ?? "{}");
@@ -1888,6 +1972,7 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
     return "nokey";
   }
   snapBusy = true;
+  snapCostRun = { usd: 0, calls: 0 };
   const t0 = performance.now();
   let img = null;
   try {
@@ -1902,10 +1987,11 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
       { type: "image", source: { type: "base64", media_type: "image/jpeg", data: img.b64 } },
       { type: "text", text: "Welche Pokémon-Karte ist hier zu sehen?" },
     ])).cards ?? [];
+    snapCostAdd({ img: 1 });
     await quickLoading;
     const secs = ((performance.now() - t0) / 1000).toFixed(1).replace(".", ",");
     if (!cards.length) {
-      snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg">Auf dem Bild wurde keine Karte erkannt (${secs} s). Am besten einen Screenshot machen, wenn die Karte groß im Bild ist.</p>`);
+      snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg">Auf dem Bild wurde keine Karte erkannt (${secs} s, ca. ${fmtCost(snapCostRun.usd)}). Am besten einen Screenshot machen, wenn die Karte groß im Bild ist.</p>`);
       return "none";
     }
     // Nur warten, wenn die Karte in noch nicht geladenen Daten stecken muss (asiatisch bzw. alt)
@@ -1964,12 +2050,14 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
     snapMulti = null;
     if (cards.length > 1 && !opts.fromScreen) await snapMultiRender(img, cards);
     if (opts.fromScreen) lastAutoQuery = hit.query ?? "";
+    snapCostShow();
     // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
     if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
       (async () => {
         for (let i = 0; i < 100 && (asiaState === "loading" || oldState === "loading"); i++) await sleep(300);
         if (token === snapToken && !snapPrefer && snapApply(first).exact) {
           const better = snapRenderResult(img, cards, secs);
+          snapCostShow();
           const top = better.query ? quickSearch(better.query).list[0] : null;
           if (top) archSetCard(top, true);
         }
@@ -2021,7 +2109,7 @@ async function snapMultiAction(kind) {
     const thumb = r.thumb ?? snapMulti.thumb;
     if (kind === "col") await colAdd(archCardInfo(r.c), { thumb, rec: r.rec });
     else if (r !== snapMulti.rows[0]) { // die erste Karte liegt schon im Archiv
-      await archPut({ id: Date.now() + n, at: new Date().toISOString(), thumb, rec: r.rec, query: r.query ?? "", exact: Boolean(r.exact), card: archCardInfo(r.c) });
+      await archPut({ id: newId(), at: new Date().toISOString(), thumb, rec: r.rec, query: r.query ?? "", exact: Boolean(r.exact), card: archCardInfo(r.c) });
     }
     n++;
   }
@@ -2055,7 +2143,7 @@ function snapRenderResult(img, cards, secs) {
   const top = grade && hit.query ? quickSearch(hit.query).list[0] : null;
   const gq = top ? gradeQuery(top) : first.pokemon_en || first.card_name || "";
   snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild">
-    <div class="snap-msg"><b>Erkannt:</b> ${desc}${grade ? ` <span class="col-grade">${esc(grade)}</span>` : ""} <span class="snap-conf">(${SNAP_CONF[first.confidence] ?? ""}${first.zoomed ? ", in voller Auflösung nachgelesen" : ""}, ${secs} s)</span>
+    <div class="snap-msg"><b>Erkannt:</b> ${desc}${grade ? ` <span class="col-grade">${esc(grade)}</span>` : ""} <span class="snap-conf">(${SNAP_CONF[first.confidence] ?? ""}${first.zoomed ? ", in voller Auflösung nachgelesen" : ""}, ${secs} s<span class="snap-cost-run"></span>)</span>
     </div>
     ${grade ? `<p class="snap-msg snap-graded">Gegradete Karte: Der Cardmarket-Preis unten gilt für ungegradete Karten. Preise für ${esc(grade)}:
       <a class="cm-link" href="https://www.pricecharting.com/search-products?type=prices&amp;q=${encodeURIComponent(gq)}" target="_blank" rel="noopener">PriceCharting ↗</a>
@@ -2106,6 +2194,14 @@ async function snapFromShare() {
 
 function snapInit() {
   snapRenderSettings();
+  snapCostRender();
+  document.getElementById("snap-cost").addEventListener("click", (e) => {
+    const b = e.target.closest("#snap-cost-reset");
+    if (!b) return;
+    if (b.dataset.ask !== "1") { b.dataset.ask = "1"; b.textContent = "Wirklich zurücksetzen?"; return; }
+    try { localStorage.removeItem(SNAP_COST_KEY); } catch {}
+    snapCostRender();
+  });
   if (snapGet("snapKey", "")) setTimeout(() => snapLoadSdk().catch(() => {}), 1500);
   // "Bild erkennen" (Galerie) und "Foto machen" (Kamera direkt, auch in der installierten App)
   for (const id of ["snap-file", "snap-camera"]) {
@@ -2208,6 +2304,10 @@ async function archTx(mode, fn, store = "archiv") {
   });
 }
 const archPut = (e) => archTx("readwrite", (s) => s.put(e));
+// Eindeutige IDs für Archiv und Sammlung: Zeitstempel, bei mehreren in derselben Millisekunde hochgezählt
+// (sonst überschreiben sich z. B. mehrere Karten einer Binderseite gegenseitig)
+let lastNewId = 0;
+const newId = () => (lastNewId = Math.max(Date.now(), lastNewId + 1));
 const archGet = (id) => archTx("readonly", (s) => s.get(id));
 const archDel = (id) => archTx("readwrite", (s) => s.delete(id));
 const archClearAll = () => archTx("readwrite", (s) => s.clear());
@@ -2242,7 +2342,7 @@ async function archSaveScan(imgUrl, first, hit, photoAt = null, chosen = null) {
   try {
     const top = chosen ?? (hit.query ? quickSearch(hit.query).list[0] : null);
     const entry = {
-      id: Date.now(), at: new Date().toISOString(), photoAt: photoAt ? new Date(photoAt).toISOString() : null, thumb: await archThumb(imgUrl),
+      id: newId(), at: new Date().toISOString(), photoAt: photoAt ? new Date(photoAt).toISOString() : null, thumb: await archThumb(imgUrl),
       rec: first, query: hit.query ?? "", exact: Boolean(hit.exact), card: top ? archCardInfo(top) : null,
     };
     await archPut(entry);
@@ -2617,7 +2717,7 @@ async function colRefresh() {
 }
 
 async function colAdd(card, extra = {}) {
-  await colPut({ id: Date.now(), at: new Date().toISOString(), card, qty: 1, buy: null, grade: snapGrade(extra.rec),
+  await colPut({ id: newId(), at: new Date().toISOString(), card, qty: 1, buy: null, grade: snapGrade(extra.rec),
     thumb: extra.thumb ?? null, archId: extra.archId ?? null, rec: extra.rec ?? null });
   await colRefresh();
 }

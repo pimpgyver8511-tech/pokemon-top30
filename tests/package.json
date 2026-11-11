@@ -1,0 +1,12 @@
+{
+  "name": "pokemon-top30-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "data-check": "node data-check.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

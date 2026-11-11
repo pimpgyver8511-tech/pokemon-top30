@@ -36,6 +36,11 @@ jobs:
       - name: Preise holen
         run: node scripts/update.mjs
 
+      # Kaputte Zusatzdaten (asiatische, ältere Karten, Sealed) durch die von gestern ersetzen;
+      # sind die Kerndaten kaputt, bricht der Lauf ab und online bleibt der Stand von gestern
+      - name: Daten prüfen
+        run: node tests/data-check.mjs --repair
+
       - name: Verlauf speichern
         run: |
           git config user.name "github-actions[bot]"

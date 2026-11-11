@@ -1,0 +1,43 @@
+name: Tests
+
+# Läuft vor jeder Veröffentlichung der Seite (aus deploy.yml), nach jedem Preis-Lauf
+# und bei Änderungen an den Tests. Schlägt etwas fehl, schickt GitHub eine E-Mail.
+on:
+  workflow_call:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Preise aktualisieren"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - name: Daten prüfen
+        run: node data-check.mjs
+      - name: Testwerkzeuge installieren
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Seite testen
+        run: npx playwright test
+      - name: Bildschirmfotos fehlgeschlagener Tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-ergebnisse
+          path: tests/test-results
+          retention-days: 7

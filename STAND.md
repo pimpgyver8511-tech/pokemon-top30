@@ -92,6 +92,13 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - **Mehrere Karten:** jede Zeile mit eigenem Ausschnitt (auch als Foto in Sammlung/Archiv), nur sicher zugeordnete vorausgewählt, „unsicher“ mit „Prüfen“-Knopf, gelernte Korrekturen gelten je Karte (`snapResolve`). Bildvergleich („Genau“) nutzt den Ausschnitt der Karte.
 - Getestet mit nachgebauten Antworten (Binderseite mit 4 Karten, kleine Karte im Screenshot, gegradete Einzelkarte); echte Trefferquote der Lageangaben muss sich am Handy zeigen.
 
+## Tests und Kosten (11.11.2026)
+
+- **Automatische Tests** (`tests/`, Playwright 1.56.1): Suche (Daten vollständig, keine doppelten IDs, Nummer, Sprache, Sealed, „Bieten bis“, Tempo), Seiten (Sets nachladen, Rangliste, Grading, kein seitliches Scrollen bei 360 px), Sammlung/Archiv (Gesamtwert, Seiten, Suche, Entfernen, Tempo), Erkennung mit nachgebauten Claude-Antworten (Einzelkarte gegradet, Binderseite mit Nachlesen und Ausschnitten, Sealed, API-Fehler, Kostenrechnung). Lokal: `cd tests && npm ci && npx playwright test` (ohne Netz: `SDK_BUNDLE=<Pfad zu einem SDK-Bündel>`).
+- **Ablauf in GitHub:** `deploy.yml` ruft zuerst `tests.yml` auf; schlägt ein Test fehl, wird nicht veröffentlicht. Nach jedem Preis-Lauf laufen die Tests ebenfalls (`workflow_run`); GitHub schickt bei Fehlern eine E-Mail. Bildschirmfotos fehlgeschlagener Tests als Artefakt „test-ergebnisse“.
+- **Datenprüfung** (`tests/data-check.mjs`): Struktur, Mindestmengen, Anteil mit Preis, doppelte IDs, Einbruch gegenüber gestern um mehr als 25 %. Im täglichen Lauf mit `--repair`: kaputte Zusatzdateien (asia, old, sealed) werden durch die Version von gestern ersetzt (Warnung im Lauf); sind latest/all/species/status kaputt, bricht der Lauf ab und nichts wird gespeichert.
+- **Kostenübersicht der Bilderkennung:** Jede Antwort wird aus `usage` bewertet (Opus 5.5 4/20 $, Haiku 5.5 0,10/0,50 $ pro Mio. Token, über 100.000 Token 0,50/2,50 $; Fallback-Versuche aus `usage.iterations` zum Preis des jeweiligen Modells; unbekannte Modelle mit 8/40 $). Gezählt in localStorage `snapCost` je Monat (Bilder, Anfragen, $, je Modell), höchstens 24 Monate, Anzeige in Euro zum Kurs der Tagesdaten. In den Einstellungen: dieser Monat, Schnitt pro Bild, Vormonate, Zurücksetzen; in der Ergebniszeile die Kosten des Bildes.
+
 ## Offen
 
 1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren

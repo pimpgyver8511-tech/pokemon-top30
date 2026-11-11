@@ -4,7 +4,7 @@ name: Seite veröffentlichen
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "!docs/data/**", ".github/workflows/deploy.yml"]
+    paths: ["docs/**", "!docs/data/**", ".github/workflows/deploy.yml", ".github/workflows/tests.yml", "tests/**"]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Erst testen: Schlägt ein Test fehl, bleibt die bisherige Version online
+  test:
+    uses: ./.github/workflows/tests.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
