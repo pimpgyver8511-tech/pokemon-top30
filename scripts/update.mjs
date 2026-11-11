@@ -2,7 +2,7 @@
 // letzten 5 Jahre über die TCGdex-API und schreibt die Top 30 pro Set
 // (sortiert nach 30-Tage-Durchschnitt) nach docs/data/.
 import { loadUsdRate, recentMainSets, tcgplayerCards, tcgplayerPrices } from "./tcgplayer.mjs";
-import { cardmarketGuidePrices, resolveSharedProducts } from "./cmguide.mjs";
+import { cardmarketGuidePrices, loadSealedProducts, resolveSharedProducts } from "./cmguide.mjs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -692,6 +692,57 @@ async function repairShared(built, set) {
   return built;
 }
 
+// ---------- Sealed-Produkte ----------
+// Deutsche Bezeichnung und Suchwörter je Cardmarket-Kategorie
+const SEALED_CAT = {
+  "Pokémon Display": ["Display", "display booster box"],
+  "Pokémon Booster": ["Booster", "booster pack boosterpack"],
+  "Pokémon Elite Trainer Boxes": ["Top-Trainer-Box", "top trainer box ttb etb elite"],
+  "Pokémon Box Set": ["Kollektion / Box", "kollektion collection box"],
+  "Pokémon Tins": ["Tin", "tin dose"],
+  "Pokémon Theme Decks": ["Themendeck", "themendeck deck"],
+  "Pokémon Blisters": ["Blister", "blister"],
+  "Pokémon Coins": ["Münze", "munze coin"],
+  "Pokémon Trainer Kits": ["Trainer-Kit", "trainer kit"],
+  "Pokémon Lot": ["Paket", "lot paket"],
+  "PCG Set": ["Set", "set"],
+};
+function buildSealed(products, builtSets, tag) {
+  // Set über den englischen Namen im Produktnamen (längster Treffer gewinnt)
+  const sets = [];
+  for (const b of builtSets) {
+    if (!b?.id || b.promo) continue;
+    const en = EN_SET_NAMES.get(b.id) ?? b.enName ?? b.name;
+    const f = foldName(en);
+    if (f.length >= 3) sets.push({ f, en, b });
+  }
+  sets.sort((a, b) => b.f.length - a.f.length);
+  const groups = new Map();
+  const cards = [];
+  for (const p of products) {
+    const nf = ` ${foldName(p.name)} `;
+    const hit = sets.find((x) => nf.includes(` ${x.f} `));
+    const key = hit ? hit.b.id : "other";
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: `sealed-${key}`, name: hit ? `${hit.b.name} · Sealed` : "Sealed-Produkte", ...(hit && hit.en !== hit.b.name ? { ne: `${hit.en} Sealed` } : {}),
+        date: hit?.b.releaseDate ?? null, si: groups.size,
+      });
+    }
+    const [label, words] = SEALED_CAT[p.category] ?? [p.category, ""];
+    const extra = [/bundle/i.test(p.name) && "bundle", /case/i.test(p.name) && "case karton", /sleeved/i.test(p.name) && "sleeved", /collection/i.test(p.name) && "kollektion", "sealed"].filter(Boolean);
+    const row = { i: `cm${p.idProduct}`, n: p.name, no: "", s: groups.get(key).si, r: label, k: `${words} ${extra.join(" ")}`.trim(), x: "sealed",
+      a30: p.trend ?? p.avg ?? null, t: p.trend, av: p.avg, lo: p.low, u: cardmarketUrl(p.idProduct) };
+    const pp = tag(p.name, "en");
+    if (pp.length) row.p = pp;
+    for (const k of Object.keys(row)) if (row[k] == null || row[k] === "") delete row[k];
+    row.no = "";
+    cards.push(row);
+  }
+  const outSets = [...groups.values()].sort((a, b) => a.si - b.si).map(({ si, ...s }) => s);
+  return { sets: outSets, cards };
+}
+
 // Notlösung, wenn pokemontcg.io ausfällt: Set nur aus TCGplayer bauen
 const mostCommon = (xs) => { const m = new Map(); for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null; };
 
@@ -864,6 +915,7 @@ async function main() {
   console.log(`Asiatische Karten gesamt: ${asia.cards.length}, mit Pokémon erkannt: ${asia.cards.filter((c) => c.p).length}`);
 
   // Ältere Karten (international seit 1999, asiatisch seit 1996): eigene Datei, wird im Browser nachgeladen
+  let builtOldAll = [];
   try {
     const known = new Set([...allSets.map((st) => st.id), ...sets.map((st) => st.id)]);
     const olderSets = await loadOlderSets(known);
@@ -885,6 +937,7 @@ async function main() {
       if (b.allCards.some((c) => c.hasPrice)) b = await repairShared(b, st);
       builtOld.push(b);
     }
+    builtOldAll = builtOld;
     const old = toSearchData(builtOld, tag);
     for (const lang of ASIA_LANGS) {
       const part = await buildAsia(lang, old.sets.length, tag, false);
@@ -895,6 +948,15 @@ async function main() {
     console.log(`Ältere Karten gesamt: ${old.cards.length}, davon ${old.cards.filter((c) => c.a30).length} mit Preis`);
   } catch (err) {
     console.warn(`Ältere Karten übersprungen: ${err.message}`);
+  }
+
+  // Sealed-Produkte (Displays, Top-Trainer-Boxen, Booster, Tins …): eigene Datei für Suche und Sammlung
+  try {
+    const sealed = buildSealed(await loadSealedProducts(), [...allSets, ...builtOldAll], tag);
+    await writeFile(path.join(OUT_DIR, "sealed.json"), JSON.stringify({ updated: now.toISOString(), ...sealed }));
+    console.log(`Sealed: ${sealed.cards.length} Produkte in ${sealed.sets.length} Gruppen`);
+  } catch (err) {
+    console.warn(`Sealed-Produkte übersprungen: ${err.message}`);
   }
 
   // Kompakter Tages-Snapshot für Trends: { kartenId: [avg7, avg30] }

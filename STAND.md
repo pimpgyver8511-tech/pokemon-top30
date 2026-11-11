@@ -69,6 +69,12 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - Sammlung: Performance Tag/Woche/Monat/Jahr, „Beste Performer“, ★-Markierung, Sortierung
 - „Meine Sammlung“ mit Kaufpreis, Anzahl, Grad, Gewinn/Verlust, Wertverlauf und Sicherung; Reiter am Handy in zwei Reihen (3 × 2)
 
+## Erledigt am 11.11.2026
+
+- **„Bieten bis“** in der Schnellsuche: Höchstgebot = (Preis × (1 − Marge) − Versand) / (1 + Gebühren), auf 50 Cent abgerundet. Einstellbar unter der Suchzeile (Grundlage Ø 30 / Ø 7 / Trend / Ab-Preis, Marge, Versand, Gebühren; Standard Ø 30, 20 %), gespeichert in localStorage `bidSet`. Bei unsicheren Preisen mit ⚠.
+- **Sealed-Produkte** (`docs/data/sealed.json`, aus Cardmarkets `products_nonsingles_6.json` + Preisliste): Displays, Booster, Top-Trainer-Boxen, Kollektionen, Tins, Themendecks, Blister, Münzen … Zuordnung zum Set über den englischen Set-Namen im Produktnamen (längster Treffer), sonst Gruppe „Sealed-Produkte“. Cardmarket liefert für Sealed nur Trend, Durchschnitt und Ab-Preis; „Ø 30“ ist hier der Trend. In der Schnellsuche nur, wenn ein Produktwort in der Suche steht (display, box, booster, etb, ttb, tin, kollektion, sealed …), damit „Glurak“ weiter Karten zeigt. Sammlung und Archiv nehmen Sealed mit (Wert = Trend).
+- **Mehrere Karten auf einem Foto:** Die Bilderkennung liefert bis zu 20 Karten (Leserichtung, `kind` card/sealed). Bei mehr als einer Karte erscheint eine Liste mit Häkchen, Preis je Karte und Gesamtwert; „Ausgewählte in die Sammlung“ / „Ausgewählte ins Archiv“. Gilt für Fotos und Screenshots, nicht für „Bildschirm mitlesen“.
+
 ## Offen
 
 1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren

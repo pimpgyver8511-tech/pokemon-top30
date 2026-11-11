@@ -175,3 +175,17 @@ export async function resolveSharedProducts(groups, used = new Set(), log = cons
   log(`  Cardmarket-Katalog: ${ok} Karten mit geteiltem Produkt neu zugeordnet${skipped ? `, ${skipped} nicht eindeutig` : ""}`);
   return out;
 }
+
+/**
+ * Sealed-Produkte (Displays, Booster, Top-Trainer-Boxen, Tins …) aus Cardmarkets Katalog mit Preisen.
+ * Cardmarket gibt für Sealed keinen 7-/30-Tage-Durchschnitt heraus, nur Trend, Durchschnitt und Ab-Preis.
+ */
+export async function loadSealedProducts() {
+  const { price } = await load();
+  const list = (await get(`${BASE}/productList/products_nonsingles_${GAME}.json`)).products ?? [];
+  const n = (v) => (typeof v === "number" && v > 0 ? round(v) : null);
+  return list.map((p) => {
+    const pr = price.get(p.idProduct) ?? {};
+    return { idProduct: p.idProduct, name: p.name, category: p.categoryName, date: String(p.dateAdded ?? "").slice(0, 10), trend: n(pr.trend), avg: n(pr.avg), low: n(pr.low) };
+  }).filter((p) => p.trend || p.avg || p.low);
+}

@@ -27,7 +27,7 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  const isData = url.origin === self.location.origin && /\/data\/(all|asia|old|species)\.json$/.test(url.pathname);
+  const isData = url.origin === self.location.origin && /\/data\/(all|asia|old|species|sealed)\.json$/.test(url.pathname);
   const isSdk = url.href.startsWith("https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@");
   if (!isData && !isSdk) return;
   event.respondWith((async () => {

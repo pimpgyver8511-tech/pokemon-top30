@@ -125,6 +125,14 @@ td.img img { width: 52px; height: auto; aspect-ratio: 245 / 342; border-radius: 
 .warn-tag.warn-dup { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn { font-size: .8rem; line-height: 1.35; padding: 6px 8px; border-radius: 6px; margin: 6px 0; background: color-mix(in srgb, var(--foil) 18%, var(--surface)); color: var(--ink); }
 .snap-note { font-size: .9rem; }
+.snap-multi { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+.snap-multi p { margin: 0; }
+.snap-multi ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 340px; overflow: auto; }
+.snap-multi label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: .9rem; cursor: pointer; }
+.snap-multi small { color: var(--muted); }
+.snap-multi-p { font-variant-numeric: tabular-nums; }
+.snap-multi-miss { font-size: .85rem; color: var(--muted); padding-left: 26px; }
+.sealed-img { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .warn-tag.warn-jp { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
 .qwarn.warn-jp { background: color-mix(in srgb, var(--down) 12%, var(--surface)); }
 .warn-tag.warn-amb { background: color-mix(in srgb, var(--down) 18%, var(--surface)); color: var(--down); }
@@ -351,6 +359,16 @@ b.up { color: var(--up); } b.down { color: var(--down); } b.flat { color: var(--
 .qprice span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .qprice b { font-size: .98rem; }
 .qprice.key { outline: 2px solid var(--foil); }
+.qprice.bid { background: var(--ink); color: var(--bg); grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; }
+.qprice.bid span { color: inherit; opacity: .8; }
+.qprice.bid b { font-size: 1.25rem; color: var(--foil); }
+.qprice.bid-warn b { color: inherit; opacity: .85; }
+.bid-set { font-size: .9rem; }
+.bid-set summary { cursor: pointer; font-weight: 700; }
+.bid-set summary span { font-weight: 400; color: var(--muted); }
+.bid-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 8px 0; }
+.bid-grid label { display: grid; gap: 2px; font-size: .78rem; color: var(--muted); }
+.bid-grid input, .bid-grid select { font: inherit; font-size: .95rem; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; box-sizing: border-box; }
 .lang-badge {
   display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .05em; vertical-align: 2px;
   padding: 1px 6px; border-radius: 4px; background: var(--ink); color: var(--bg);
@@ -460,6 +478,16 @@ html { scroll-behavior: smooth; }
       </details>
       <input id="quick-input" type="search" inputmode="search" autocomplete="off" enterkeyhint="search"
         placeholder="z. B. Dragonite deutsch oder Glurak japanisch">
+      <details class="bid-set" id="bid-set">
+        <summary>„Bieten bis“ einstellen <span id="bid-sum"></span></summary>
+        <div class="bid-grid">
+          <label>Grundlage<select id="bid-base"><option value="a30">Ø 30 Tage</option><option value="a7">Ø 7 Tage</option><option value="t">Trend</option><option value="lo">Günstigstes Angebot</option></select></label>
+          <label>Marge in %<input id="bid-margin" type="number" inputmode="decimal" min="0" max="90" step="1"></label>
+          <label>Versand € (pro Karte)<input id="bid-ship" type="text" inputmode="decimal" placeholder="0"></label>
+          <label>Gebühren in %<input id="bid-fee" type="number" inputmode="decimal" min="0" max="50" step="0.5" placeholder="0"></label>
+        </div>
+        <p class="quick-hint">Bieten bis = Preis × (1 − Marge) − Versand, geteilt durch (1 + Gebühren). Beispiel: 20 % Marge heißt, du kaufst höchstens 20 % unter dem Marktwert. Gespeichert nur auf diesem Gerät.</p>
+      </details>
       <p class="quick-hint" id="quick-hint">Pokémon-Name in beliebiger Sprache, dahinter die Sprache, z. B. „Dragonite deutsch“ oder „Glurak japanisch“.</p>
       <div id="quick-results" class="quick-results"></div>
     </section>
@@ -730,7 +758,7 @@ const BADGE = { intl: "DE/EN", ja: "JP", ko: "KR", "zh-tw": "CN", "zh-cn": "CN" 
 const groupOf = (c) => (c.L ? (c.L.startsWith("zh") ? "zh" : c.L) : "intl");
 
 function indexCards(cards) {
-  for (const c of cards) c._hay = fold(`${c.n} ${c.e ?? ""}`);
+  for (const c of cards) c._hay = fold(`${c.n} ${c.e ?? ""} ${c.k ?? ""}`);
   markShared(cards, (c) => c.s, (c) => c.u);
 }
 
@@ -838,7 +866,8 @@ async function loadQuick() {
     .catch(() => done("missing"))
     .finally(() => { updateQuickHint(); renderQuick(); if (view === "archive") renderArchive(); if (view === "collection") renderCollection(); });
   extra("data/asia.json", (st) => { asiaState = st; })
-    .then(() => extra("data/old.json", (st) => { oldState = st; }));
+    .then(() => extra("data/old.json", (st) => { oldState = st; }))
+    .then(() => extra("data/sealed.json", () => {}));
 }
 let oldState = "idle";
 
@@ -912,12 +941,20 @@ const RARITY_BY_VARIANT = {
   gold: /hyper|gold|secret|rainbow/i,
 };
 
+// Sealed-Produkte erscheinen nur, wenn ein passendes Wort in der Suche steht (sonst verdrängen teure
+// Boxen bei "Glurak" die Karten)
+const isSealed = (c) => c?.x === "sealed";
+const SEALED_WORDS = new Set(["display", "box", "booster", "boosterpack", "pack", "etb", "ttb", "elite", "tin", "dose", "blister", "kollektion",
+  "collection", "sealed", "bundle", "deck", "themendeck", "case", "karton", "munze", "coin", "premium", "trainer", "kit", "sleeved", "build", "battle"]);
+
 function quickSearch(query) {
   const q = parseQuery(query);
   if (!q.species.length && !q.words.length && q.num == null) return { q, list: [] };
   const wantGroup = q.lang === "de" || q.lang === "en" ? "intl" : q.lang;
   const hits = [];
+  const wantSealed = q.words.some((w) => SEALED_WORDS.has(w));
   for (const c of quickData.cards) {
+    if (isSealed(c) && !wantSealed) continue;
     if (wantGroup && groupOf(c) !== wantGroup) continue;
     const set = quickData.sets[c.s];
     let score = 0;
@@ -960,6 +997,47 @@ function priceCell(label, v, key = false) {
   return `<div class="qprice${key ? " key" : ""}"><span>${label}</span><b>${fmtPrice(v ?? null)}</b></div>`;
 }
 
+// ---------- "Bieten bis": Höchstgebot aus Marktpreis, Marge, Versand und Gebühren ----------
+const BID_DEFAULT = { base: "a30", margin: 20, ship: 0, fee: 0 };
+function bidSettings() {
+  try { return { ...BID_DEFAULT, ...JSON.parse(localStorage.getItem("bidSet") ?? "{}") }; } catch { return { ...BID_DEFAULT }; }
+}
+function bidFor(c) {
+  const b = bidSettings();
+  const base = c?.[b.base] ?? c?.a30;
+  if (!(base > 0)) return null;
+  const v = (base * (1 - (Number(b.margin) || 0) / 100) - (Number(b.ship) || 0)) / (1 + (Number(b.fee) || 0) / 100);
+  return v > 0 ? Math.floor(v * 2) / 2 : 0; // auf 50 Cent abrunden
+}
+const BID_BASE_LABEL = { a30: "Ø 30", a7: "Ø 7", t: "Trend", lo: "Ab-Preis" };
+function bidCell(c) {
+  const v = bidFor(c);
+  if (v == null) return "";
+  const w = priceWarn(c);
+  return `<div class="qprice bid${w && w.k !== "swing" ? " bid-warn" : ""}" title="Aus ${BID_BASE_LABEL[bidSettings().base]}${w ? " – Achtung: " + w.tag : ""}"><span>Bieten bis${w && w.k !== "swing" ? " ⚠" : ""}</span><b>${fmtPrice(v)}</b></div>`;
+}
+function bidInit() {
+  const b = bidSettings();
+  const el = (id) => document.getElementById(id);
+  el("bid-base").value = b.base;
+  el("bid-margin").value = b.margin;
+  el("bid-ship").value = b.ship ? String(b.ship).replace(".", ",") : "";
+  el("bid-fee").value = b.fee || "";
+  const sum = () => {
+    const s = bidSettings();
+    el("bid-sum").textContent = `(${BID_BASE_LABEL[s.base]}, ${s.margin} % Marge${s.ship ? `, ${fmtPrice(s.ship)} Versand` : ""}${s.fee ? `, ${s.fee} % Gebühren` : ""})`;
+  };
+  const save = () => {
+    const s = { base: el("bid-base").value, margin: Math.min(90, Math.max(0, Number(el("bid-margin").value) || 0)),
+      ship: colNum(el("bid-ship").value) ?? 0, fee: Math.min(50, Math.max(0, Number(String(el("bid-fee").value).replace(",", ".")) || 0)) };
+    try { localStorage.setItem("bidSet", JSON.stringify(s)); } catch {}
+    sum();
+    renderQuick();
+  };
+  for (const id of ["bid-base", "bid-margin", "bid-ship", "bid-fee"]) el(id).addEventListener("change", save);
+  sum();
+}
+
 // Nach einem Scan: in der Trefferliste die richtige Version fürs Archiv wählen
 function pickBtn(c) {
   if (!archLastId || document.getElementById("quick-input").value !== archLastQuery) return "";
@@ -1000,27 +1078,32 @@ function renderQuick() {
       ? `<a href="${esc(c.big ?? c.img)}" target="_blank" rel="noopener" aria-label="Großes Bild von ${esc(title)}"><img loading="lazy" src="${esc(c.img)}" alt="${esc(title)}"></a>`
       : art
         ? `<span class="art-wrap"><img class="art" loading="lazy" src="${esc(art)}" alt="Symbolbild ${esc(title)}" onerror="this.parentElement.outerHTML='<span class=&quot;no-img&quot;>?</span>'"><span class="art-tag">Symbolbild</span></span>`
-        : '<span class="no-img">?</span>';
-    const no = `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}${c.pn ? ` (gedruckt ${esc(c.pn)})` : ""}`;
+        : isSealed(c) ? '<span class="no-img sealed-img">Sealed</span>' : '<span class="no-img">?</span>';
+    const no = isSealed(c) ? "" : `Nr. ${esc(c.no)}${set.off ? "/" + set.off : ""}${c.pn ? ` (gedruckt ${esc(c.pn)})` : ""}`;
     const rarity = c.r && c.r !== "None" ? esc(c.r) : "";
     const meta = [esc(set.name), no, rarity, c.v ? esc(c.v) : ""].filter(Boolean).join(" · ");
-    const prices = isTp(c) && c.a30
+    const prices = isSealed(c)
       ? `<div class="qprices">
-          ${priceCell("US-Preis in €", c.a30, true)}<div class="qprice"><span>TCGplayer in $</span><b>${fmtUsd(c.usd)}</b></div>${priceCell("Ab (in €)", c.lo)}
+          ${bidCell(c)}${priceCell("Trend", c.t, true)}${priceCell("Ø Verkauf", c.av)}${priceCell("Ab", c.lo)}
+        </div>
+        <div class="qmeta">Sealed-Produkt: Cardmarket nennt hier Trend, Durchschnitt und günstigstes Angebot (kein 7-/30-Tage-Schnitt).</div>`
+      : isTp(c) && c.a30
+      ? `<div class="qprices">
+          ${bidCell(c)}${priceCell("US-Preis in €", c.a30, true)}<div class="qprice"><span>TCGplayer in $</span><b>${fmtUsd(c.usd)}</b></div>${priceCell("Ab (in €)", c.lo)}
         </div>
         <div class="qmeta">${usTag} Noch kein Cardmarket-Preis. TCGplayer-Marktpreis (USA), ${fxNote(quickData.fx)}.</div>`
       : c.a30
       ? `<div class="qprices">
-          ${priceCell("Ø 1 Tag", c.a1)}${priceCell("Ø 7 Tage", c.a7, true)}${priceCell("Ø 30 Tage", c.a30, true)}
+          ${bidCell(c)}${priceCell("Ø 1 Tag", c.a1)}${priceCell("Ø 7 Tage", c.a7, true)}${priceCell("Ø 30 Tage", c.a30, true)}
           ${priceCell("Trend", c.t)}${priceCell("Ab", c.lo)}
         </div>${warnLine(priceWarn(c))}`
       : '<div class="qnone">Noch kein Cardmarket-Preis für diese Karte.</div>';
     return `<article class="qcard">${img}
       <div class="qbody">
-        <div class="qname"><span class="lang-badge">${BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
+        <div class="qname"><span class="lang-badge">${isSealed(c) ? "SEALED" : BADGE[c.L ?? "intl"]}</span> ${esc(title)}${sub && sub !== title ? ` <small>(${esc(sub)})</small>` : ""}</div>
         <div class="qmeta">${meta}</div>
         ${prices}
-        <div class="qfoot">${c.a30 && !isTp(c) ? chip(pct(c.a7, c.a30)) : ""}${c.tu ? `<a class="cm-link" href="${esc(c.tu)}" target="_blank" rel="noopener">TCGplayer ↗</a>` : ""}<a class="cm-link" href="${esc(cmUrl(c.u, { lang: linkLang }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? linkLang : null })} ↗</a>${ebayLink(c, linkLang)}${colBtn(c)}${pickBtn(c)}</div>
+        <div class="qfoot">${c.a30 && !isTp(c) && !isSealed(c) ? chip(pct(c.a7, c.a30)) : ""}${c.tu ? `<a class="cm-link" href="${esc(c.tu)}" target="_blank" rel="noopener">TCGplayer ↗</a>` : ""}<a class="cm-link" href="${esc(cmUrl(c.u, { lang: linkLang }))}" target="_blank" rel="noopener">${cmLabel({ lang: /idProduct=/.test(c.u ?? "") ? linkLang : null })} ↗</a>${ebayLink(c, linkLang)}${colBtn(c)}${pickBtn(c)}</div>
       </div>
     </article>`;
   }).join("");
@@ -1351,7 +1434,9 @@ Felder:
 - variant: Art der Karte: "normal" (normale Karte mit Rahmen und Textfeld, auch normale ex/GX/V-Karten), "full_art" (Vollbild-Karte, Pokémon vor einfarbigem/strukturiertem Hintergrund), "illustration" (Vollbild mit Szenen-Illustration, Alt Art, Special/Illustration Rare), "gold" (goldene oder regenbogenfarbene Karte), sonst "unknown".
 - year: Jahr aus der Copyright-Zeile unten auf der Karte (z. B. "2002", "2023"), leer wenn nicht lesbar.
 - confidence: high, medium oder low.
-Die am deutlichsten gezeigte Karte zuerst. Ist keine Karte erkennbar, gib eine leere Liste zurück. Rate lieber mit confidence "low", als nichts zu liefern.`;
+Zeigt das Bild ein verschweißtes Produkt (Display/Booster Box, Boosterpack, Top-Trainer-Box/Elite Trainer Box, Tin, Blister, Kollektion, Themendeck), gib es als Eintrag mit kind "sealed" zurück: card_name = englischer Produktname mit Set-Namen, z. B. "Prismatic Evolutions Elite Trainer Box" oder "Destined Rivals Booster Box", pokemon_en/pokemon_de = abgebildetes Pokémon oder leer, number leer. Einzelkarten haben kind "card".
+Zeigt das Bild mehrere Karten (z. B. eine Binderseite oder Karten auf dem Tisch), liste alle erkennbaren Karten auf, höchstens 20, von oben links nach unten rechts.
+Die am deutlichsten gezeigte Karte zuerst (bei mehreren Karten in Leserichtung). Ist keine Karte erkennbar, gib eine leere Liste zurück. Rate lieber mit confidence "low", als nichts zu liefern.`;
 const SNAP_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -1362,8 +1447,9 @@ const SNAP_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "set_code", "language", "variant", "year", "confidence"],
+        required: ["kind", "pokemon_en", "pokemon_de", "card_name", "number", "set_hint", "set_code", "language", "variant", "year", "confidence"],
         properties: {
+          kind: { type: "string", enum: ["card", "sealed"] },
           pokemon_en: { type: "string" },
           pokemon_de: { type: "string" },
           card_name: { type: "string" },
@@ -1509,6 +1595,11 @@ async function snapVisualPick(client, model, img, cands) {
 
 // Aus dem Ergebnis eine Suchanfrage bauen; erst genau, dann schrittweise lockerer
 function snapQueries(card) {
+  if (card.kind === "sealed") {
+    // Produktname, z. B. "Prismatic Evolutions Elite Trainer Box"; "sealed" stellt sicher, dass Sealed gesucht wird
+    const words = fold(card.card_name).split(" ").filter((w) => w && w !== "pokemon" && w !== "tcg");
+    return [...new Set([`${words.join(" ")} sealed`, `${words.filter((w) => w.length > 2).join(" ")} sealed`, `${fold(card.set_hint)} ${words.slice(-2).join(" ")} sealed`])].filter((q) => q.trim() !== "sealed");
+  }
   const name = (card.pokemon_de || card.pokemon_en || card.card_name || "").trim();
   if (!name) return [];
   const printed = fold(card.card_name);
@@ -1664,6 +1755,9 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
     }
     // Aus dem Stream: dieselbe Karte direkt hintereinander nur einmal archivieren
     if (!opts.fromScreen || hit.query !== lastAutoQuery) await archSaveScan(img.url, first, hit, photoAt, chosen);
+    // Mehrere Karten auf dem Bild (nicht beim Mitlesen des Streams): Liste zum Übernehmen
+    snapMulti = null;
+    if (cards.length > 1 && !opts.fromScreen) await snapMultiRender(img, cards);
     if (opts.fromScreen) lastAutoQuery = hit.query ?? "";
     // Nicht genau getroffen und es kommen noch Karten nach: danach still noch einmal versuchen
     if (!hit.exact && (asiaState === "loading" || oldState === "loading")) {
@@ -1684,6 +1778,51 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
   } finally {
     snapBusy = false;
   }
+}
+
+// ---------- Mehrere Karten auf einem Foto (Binderseite, Karten auf dem Tisch) ----------
+let snapMulti = null; // { thumb, rows: [{ rec, c }] }
+function snapMatch(rec) {
+  const keep = rarityPref;
+  rarityPref = RARITY_BY_VARIANT[rec.variant] ?? null;
+  try {
+    for (const q of snapQueries(rec)) { const c = quickSearch(q).list[0]; if (c) return c; }
+    return null;
+  } finally { rarityPref = keep; }
+}
+async function snapMultiRender(img, cards) {
+  const rows = cards.map((rec) => ({ rec, c: snapMatch(rec) }));
+  snapMulti = { thumb: await archThumb(img.url), rows };
+  const total = rows.reduce((n, r) => n + (r.c && !unsurePrice(r.c) ? r.c.a30 ?? 0 : 0), 0);
+  const box = document.getElementById("snap-result");
+  box.querySelector(".snap-multi")?.remove();
+  const el = document.createElement("div");
+  el.className = "snap-multi";
+  el.innerHTML = `<p><b>${rows.length} Karten erkannt</b> · zusammen ca. ${fmtPrice(total)} (Ø 30 Tage)</p>
+    <ul>${rows.map((r, i) => r.c
+      ? `<li><label><input type="checkbox" data-mi="${i}" checked> <span><b>${esc(r.c.n)}</b> <small>${esc(quickData.sets[r.c.s]?.name ?? "")} · ${isSealed(r.c) ? esc(r.c.r ?? "") : `Nr. ${esc(r.c.no)}`}</small></span> <b class="snap-multi-p">${fmtPrice(r.c.a30 ?? null)}</b></label></li>`
+      : `<li class="snap-multi-miss">${esc(r.rec.card_name || r.rec.pokemon_de || "Unbekannt")}${r.rec.number ? ` (Nr. ${esc(r.rec.number)})` : ""}: nicht gefunden</li>`).join("")}</ul>
+    <div class="arch-actions"><button type="button" data-multi="col">Ausgewählte in die Sammlung</button><button type="button" data-multi="arch">Ausgewählte ins Archiv</button></div>
+    <p class="quick-hint snap-multi-msg" hidden></p>`;
+  box.append(el);
+}
+async function snapMultiAction(kind) {
+  if (!snapMulti) return;
+  const box = document.querySelector(".snap-multi");
+  const sel = [...box.querySelectorAll("[data-mi]:checked")].map((x) => snapMulti.rows[Number(x.dataset.mi)]).filter((r) => r?.c);
+  const msg = box.querySelector(".snap-multi-msg");
+  if (!sel.length) { msg.textContent = "Keine Karte ausgewählt."; msg.hidden = false; return; }
+  let n = 0;
+  for (const r of sel) {
+    if (kind === "col") await colAdd(archCardInfo(r.c), { thumb: snapMulti.thumb, rec: r.rec });
+    else if (r !== snapMulti.rows[0]) { // die erste Karte liegt schon im Archiv
+      await archPut({ id: Date.now() + n, at: new Date().toISOString(), thumb: snapMulti.thumb, rec: r.rec, query: "", exact: true, card: archCardInfo(r.c) });
+    }
+    n++;
+  }
+  archUpdateCount();
+  msg.textContent = kind === "col" ? `${n} Karten in die Sammlung übernommen.` : `${n} Karten im Archiv (die erste war schon drin).`;
+  msg.hidden = false;
 }
 
 // Zusatzzeile unter dem Erkennungsergebnis (Bildvergleich, gelernte Korrektur)
@@ -1786,6 +1925,8 @@ function snapInit() {
     snapRenderSettings();
   });
   document.getElementById("snap-result").addEventListener("click", (e) => {
+    const m = e.target.closest("[data-multi]");
+    if (m) return snapMultiAction(m.dataset.multi);
     const b = e.target.closest("[data-q]");
     if (!b) return;
     document.getElementById("quick-input").value = b.dataset.q;
@@ -1869,7 +2010,7 @@ async function archThumb(dataUrl) {
 function archCardInfo(c) {
   const set = quickData.sets[c.s];
   return { i: c.i, n: c.n, e: c.e ?? null, no: c.no, set: set?.name ?? "", off: set?.off ?? null, L: c.L ?? null, r: c.r ?? null,
-    a7: c.a7 ?? null, a30: c.a30 ?? null, r30: c.r30 ?? null, lo: c.lo ?? null, u: c.u, img: c.img ?? null, p: c.p ?? null };
+    a7: c.a7 ?? null, a30: c.a30 ?? null, r30: c.r30 ?? null, lo: c.lo ?? null, u: c.u, img: c.img ?? null, p: c.p ?? null, ...(c.x ? { x: c.x } : {}) };
 }
 
 async function archUpdateCount() {
@@ -2412,8 +2553,8 @@ async function renderCollection() {
     const ownTxt = e.own != null ? e.own.toFixed(2).replace(".", ",") : "";
     const lang = c.L ?? (e.lang || null);          // asiatische Karten: Sprache der Karte, sonst gewählte Sprache
     const filt = /idProduct=/.test(c.u ?? "") ? { lang, cond: e.cond } : {};
-    const pic = img ? `<img class="arch-thumb" loading="lazy" src="${esc(img)}" alt="${esc(c.n)}">` : '<span class="arch-thumb no-img">?</span>';
-    const set = `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
+    const pic = img ? `<img class="arch-thumb" loading="lazy" src="${esc(img)}" alt="${esc(c.n)}">` : `<span class="arch-thumb no-img${isSealed(c) ? " sealed-img" : ""}">${isSealed(c) ? "Sealed" : "?"}</span>`;
+    const set = isSealed(c) ? `${esc(c.set)} · ${esc(c.r ?? "Sealed")}` : `${esc(c.set)} · Nr. ${esc(c.no)}${c.off ? "/" + c.off : ""}${c.r && c.r !== "None" ? " · " + esc(c.r) : ""}`;
     const buyTxt = e.buy != null ? e.buy.toFixed(2).replace(".", ",") : "";
     const isTop = PERIODS.some(([k]) => top[k]?.[0] === e);
     return `<article class="arch-item col-item${isTop ? " col-star" : ""}" id="col-e-${e.id}">${pic}
@@ -2423,7 +2564,7 @@ async function renderCollection() {
         ${e.folder || e.note ? `<div class="qmeta">${e.folder ? `Ordner: <b>${esc(e.folder)}</b>` : ""}${e.folder && e.note ? " · " : ""}${e.note ? `Notiz: ${esc(e.note)}` : ""}</div>` : ""}
         ${e.variant && e.variant !== "Reverse Holo" ? '<div class="qmeta">Preis gilt für die normale Version, für diese Variante gibt es keinen eigenen Cardmarket-Durchschnitt.</div>' : ""}
         <div class="qprices">
-          ${e.own != null ? priceCell("Eigener Wert / Stück", e.own, true) : ""}${priceCell(isTp(cur) ? "US-Preis heute (€)" : "Ø 30 heute", now, e.own == null)}${priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, val != null ? val * q : null) : ""}${e.buy === 0 ? '<div class="qprice"><span>Bezahlt</span><b>gezogen</b></div>' : e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
+          ${e.own != null ? priceCell("Eigener Wert / Stück", e.own, true) : ""}${priceCell(isSealed(c) ? "Trend heute" : isTp(cur) ? "US-Preis heute (€)" : "Ø 30 heute", now, e.own == null)}${isSealed(c) ? "" : priceCell("Ø 7 heute", cur?.a7 ?? null)}${q > 1 ? priceCell(`Wert × ${q}`, val != null ? val * q : null) : ""}${e.buy === 0 ? '<div class="qprice"><span>Bezahlt</span><b>gezogen</b></div>' : e.buy != null ? priceCell("Bezahlt / Stück", e.buy) : ""}
         </div>
         ${e.cond || (!c.L && e.lang) ? `<div class="qmeta">${[!c.L && e.lang ? `Sprache: <b>${esc(COL_LANGS.find(([k]) => k === e.lang)?.[1] ?? e.lang)}</b>` : "", e.cond ? `Zustand: <b>${esc(CONDITIONS.find(([k]) => k === e.cond)?.[1] ?? e.cond)}</b>` : ""].filter(Boolean).join(" · ")}. Der Cardmarket-Durchschnitt mischt alle ${[!c.L && e.lang ? "europäischen Sprachen" : "", e.cond ? "Zustände" : ""].filter(Boolean).join(" und ")}${e.own == null ? ` – für deine Karte über „${cmLabel(filt)}“ nachsehen und als eigenen Wert eintragen` : ""}.</div>` : ""}
         ${e.own != null && priceWarn(cur) ? `<div class="qwarn warn-${priceWarn(cur).k}">⚠ Cardmarket-Preis ${{ dup: "unsicher", amb: "unsicher", jp: "gilt für die japanische Karte" }[priceWarn(cur).k] ?? "schwankt stark"}, es zählt dein eigener Wert.</div>` : warnLine(priceWarn(cur))}
@@ -2995,6 +3136,7 @@ async function init() {
   document.getElementById("view-collection").addEventListener("click", () => setView("collection"));
   gradeInit();
   colInit();
+  bidInit();
   document.getElementById("listen-btn").addEventListener("click", () => (listening ? stopListening() : startListening()));
   document.getElementById("listen-history").addEventListener("click", (e) => {
     const b = e.target.closest("[data-q]");
