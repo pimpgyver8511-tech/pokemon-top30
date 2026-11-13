@@ -139,5 +139,33 @@ test("Fehler der API werden verständlich gemeldet", async ({ page }) => {
   await waitAllData(page);
   await uploadImage(page, await makeImage(page, 600, 800, [["#e00000", 50, 50, 500, 700]]));
   await expect(page.locator("#snap-result .snap-err")).toContainText("API-Schlüssel wird nicht akzeptiert");
+  await expect(page.locator("#snap-result .snap-err-detail")).toContainText("401");
+  expect(errors).toEqual([]);
+});
+
+test("Anfrage kommt nicht durch: eigene Meldung statt „Internet prüfen“", async ({ page }) => {
+  const errors = watchErrors(page);
+  let posts = 0;
+  await page.route("https://api.anthropic.com/**", (r) => {
+    if (r.request().method() === "OPTIONS") return r.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" } });
+    posts++;
+    return r.abort("connectionreset");
+  });
+  await openApp(page, "#suche", { key: KEY });
+  await waitAllData(page);
+  await uploadImage(page, await makeImage(page, 600, 800, [["#e00000", 50, 50, 500, 700]]));
+  await expect(page.locator("#snap-result .snap-err")).toContainText("kam nicht durch", { timeout: 60_000 });
+  await expect(page.locator("#snap-result .snap-err-detail")).toContainText("Connection error");
+  expect(posts).toBe(3); // erster Versuch und zwei Wiederholungen
+  expect(errors).toEqual([]);
+});
+
+test("Erkennungs-Software lädt nicht: klare Meldung", async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.route(/cdn\.jsdelivr\.net\/npm\/@anthropic-ai\/sdk/, (r) => r.abort("blockedbyclient"));
+  await openApp(page, "#suche", { key: KEY, sdk: false });
+  await waitAllData(page);
+  await uploadImage(page, await makeImage(page, 600, 800, [["#e00000", 50, 50, 500, 700]]));
+  await expect(page.locator("#snap-result .snap-err")).toContainText("cdn.jsdelivr.net");
   expect(errors).toEqual([]);
 });

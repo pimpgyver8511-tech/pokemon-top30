@@ -10,10 +10,10 @@ export function watchErrors(page) {
 }
 
 // Seite öffnen. Optional mit API-Schlüssel (nur zum Test, geht nie an Anthropic: die Antworten sind nachgebaut).
-export async function openApp(page, hash = "", { key = null, mode = "fast" } = {}) {
+export async function openApp(page, hash = "", { key = null, mode = "fast", sdk = true } = {}) {
   if (key) await page.addInitScript(([k, m]) => { localStorage.setItem("snapKey", k); localStorage.setItem("snapMode", m); }, [key, mode]);
   // Das Claude-SDK kommt sonst von jsDelivr; lokal ohne Netz kann ein eigenes Bündel einspringen
-  if (process.env.SDK_BUNDLE) {
+  if (sdk && process.env.SDK_BUNDLE) {
     await page.route(/cdn\.jsdelivr\.net\/npm\/@anthropic-ai\/sdk/, (r) => r.fulfill({ contentType: "text/javascript", body: fs.readFileSync(process.env.SDK_BUNDLE) }));
   }
   await page.goto("/" + hash);

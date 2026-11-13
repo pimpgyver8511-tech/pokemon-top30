@@ -99,6 +99,11 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - **Datenprüfung** (`tests/data-check.mjs`): Struktur, Mindestmengen, Anteil mit Preis, doppelte IDs, Einbruch gegenüber gestern um mehr als 25 %. Im täglichen Lauf mit `--repair`: kaputte Zusatzdateien (asia, old, sealed) werden durch die Version von gestern ersetzt (Warnung im Lauf); sind latest/all/species/status kaputt, bricht der Lauf ab und nichts wird gespeichert.
 - **Kostenübersicht der Bilderkennung:** Jede Antwort wird aus `usage` bewertet (Opus 5.5 4/20 $, Haiku 5.5 0,10/0,50 $ pro Mio. Token, über 100.000 Token 0,50/2,50 $; Fallback-Versuche aus `usage.iterations` zum Preis des jeweiligen Modells; unbekannte Modelle mit 8/40 $). Gezählt in localStorage `snapCost` je Monat (Bilder, Anfragen, $, je Modell), höchstens 24 Monate, Anzeige in Euro zum Kurs der Tagesdaten. In den Einstellungen: dieser Monat, Schnitt pro Bild, Vormonate, Zurücksetzen; in der Ergebniszeile die Kosten des Bildes.
 
+## Fehlermeldungen der Erkennung (13.11.2026)
+
+- Rückmeldung: „Keine Verbindung zum Anthropic-Dienst“, obwohl das Internet geht. Diese Meldung kam bisher bei **jedem** Fehler ohne HTTP-Code (Software nicht geladen, Zeitüberschreitung, Anfrage abgebrochen, Fehler in der App). Jetzt getrennt (`snapErrorText`): jsDelivr-SDK nicht geladen (`err.sdk`), offline, Zeitüberschreitung (`APIConnectionTimeoutError`), Anfrage kam nicht durch (`APIConnectionError`, meist Störung bei Anthropic oder Blocker), überlastet (529), sonst „Fehler in der App“. Darunter klein „Technisch: …“ (`snapErrorDetail`, Fehlerkette mit Ursache) für Screenshots.
+- Zeitlimit 60 → 90 s, 2 statt 1 Wiederholung, API-Schlüssel wird getrimmt. Von der Sandbox aus war api.anthropic.com am 13.11. erreichbar (CORS korrekt); die tatsächliche Ursache beim Nutzer ist noch offen.
+
 ## Offen
 
 1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren

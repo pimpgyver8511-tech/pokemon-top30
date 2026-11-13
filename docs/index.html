@@ -142,6 +142,8 @@ td.img img { width: 52px; height: calc(52px * 342 / 245); object-fit: cover; ove
 .snap-cost-months { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: .85rem; color: var(--muted); }
 .snap-cost-months li { display: flex; justify-content: space-between; gap: 8px; }
 .snap-cost p { margin: 0; }
+.snap-err p { margin: 0; }
+.snap-err-detail { font-size: .78rem; color: var(--muted); margin-top: 4px !important; word-break: break-word; }
 .snap-multi small { color: var(--muted); }
 .snap-multi-p { font-variant-numeric: tabular-nums; }
 .snap-multi-miss { font-size: .85rem; color: var(--muted); padding-left: 26px; }
@@ -1635,12 +1637,19 @@ let snapSdkLoad = null;
 let snapBusy = false;
 let snapToken = 0;
 // SDK einmal laden und merken (wird schon beim Öffnen der Schnellsuche angestoßen)
+let snapSdk = null; // geladene SDK-Klasse (für die Fehlerarten)
 function snapLoadSdk() {
-  snapSdkLoad ??= import(SNAP_SDK).then((m) => m.default).catch((err) => { snapSdkLoad = null; throw err; });
+  snapSdkLoad ??= import(SNAP_SDK).then((m) => (snapSdk = m.default)).catch((err) => {
+    snapSdkLoad = null;
+    throw Object.assign(new Error("Die Erkennungs-Software konnte nicht geladen werden."), { sdk: true, cause: err });
+  });
   return snapSdkLoad;
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Fehler -> verständlicher Text. Ohne Antwortcode (status) gibt es mehrere Ursachen: Software nicht
+// geladen, Zeitüberschreitung, Anfrage nicht angekommen oder ein Fehler in der App selbst.
+const SNAP_TIMEOUT_S = 90;
 function snapErrorText(err) {
   const status = err?.status;
   const msg = String(err?.error?.error?.message ?? err?.message ?? "");
@@ -1648,9 +1657,26 @@ function snapErrorText(err) {
   if (status === 403) return "Der API-Schlüssel hat keine Berechtigung für diese Anfrage.";
   if (status === 429) return "Gerade zu viele Anfragen. In ein paar Sekunden noch einmal versuchen.";
   if (/credit balance/i.test(msg)) return "Auf deinem Anthropic-Konto ist kein Guthaben mehr. Bitte in der Console aufladen.";
-  if (status >= 500) return "Der Anthropic-Dienst antwortet gerade nicht. Gleich noch einmal versuchen.";
-  if (!status) return "Keine Verbindung zum Anthropic-Dienst. Internetverbindung prüfen.";
-  return `Fehler bei der Erkennung: ${msg || status}`;
+  if (status === 529 || /overloaded/i.test(msg)) return "Anthropic ist gerade überlastet. In ein paar Minuten noch einmal versuchen.";
+  if (status >= 500) return "Der Anthropic-Dienst hat einen Fehler gemeldet. Gleich noch einmal versuchen.";
+  if (status) return `Fehler bei der Erkennung: ${msg || status}`;
+  if (err?.sdk) return "Die Erkennungs-Software (von cdn.jsdelivr.net) konnte nicht geladen werden. Seite neu laden. Hilft das nicht, sperrt vielleicht ein Werbe- oder Datenschutzblocker diese Adresse.";
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "Das Gerät ist gerade offline. Internetverbindung prüfen.";
+  const conn = snapSdk?.APIConnectionError && err instanceof snapSdk.APIConnectionError;
+  if ((snapSdk?.APIConnectionTimeoutError && err instanceof snapSdk.APIConnectionTimeoutError) || /timed out/i.test(msg)) {
+    return `Anthropic hat nicht innerhalb von ${SNAP_TIMEOUT_S} Sekunden geantwortet (auch nicht beim zweiten Versuch). Meist ist der Dienst gerade sehr langsam. Gleich noch einmal versuchen, bei vielen Karten auf einem Bild besser weniger auf einmal.`;
+  }
+  if (conn) return "Die Anfrage an Anthropic kam nicht durch, obwohl das Internet geht. Meist eine kurze Störung bei Anthropic (status.anthropic.com), seltener ein Werbe- oder Datenschutzblocker, der api.anthropic.com sperrt. In ein paar Minuten noch einmal versuchen.";
+  return "In der App ist bei der Erkennung ein Fehler aufgetreten. Bitte einen Screenshot dieser Meldung schicken.";
+}
+// Technische Angabe für die Fehlersuche (z. B. per Screenshot)
+function snapErrorDetail(err) {
+  const parts = [];
+  for (let e = err, i = 0; e && i < 3; e = e.cause, i++) {
+    const t = [e.status, e.name !== "Error" ? e.name : "", e.message].filter(Boolean).join(" ");
+    if (t && !parts.includes(t)) parts.push(t);
+  }
+  return parts.join(" ← ").slice(0, 240);
 }
 
 // Gelernte Korrekturen: gleiche Erkennung (Name, Nummer, Sprache) -> die Karte, die du gewählt hast.
@@ -1981,7 +2007,7 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
     snapShow(`<img class="snap-thumb" src="${img.url}" alt="Hochgeladenes Bild"><p class="snap-msg"><span class="spinner" aria-hidden="true"></span> Karte wird erkannt …</p>`);
     quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
     const Anthropic = await snapLoadSdk();
-    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, maxRetries: 1, timeout: 60_000 });
+    const client = new Anthropic({ apiKey: key.trim(), dangerouslyAllowBrowser: true, maxRetries: 2, timeout: SNAP_TIMEOUT_S * 1000 });
     const model = SNAP_MODELS[mode] ?? SNAP_MODELS.exact;
     const cards = (await snapAsk(client, model, [
       { type: "image", source: { type: "base64", media_type: "image/jpeg", data: img.b64 } },
@@ -2066,7 +2092,8 @@ async function snapRecognize(blob, photoAt = null, opts = {}) {
     return "ok";
   } catch (err) {
     console.error(err);
-    snapShow(`<p class="snap-msg snap-err">${esc(err.refusal ? "Die Erkennung hat das Bild abgelehnt. Bitte ein anderes Bild versuchen." : snapErrorText(err))}</p>`);
+    const detail = err.refusal ? "" : snapErrorDetail(err);
+    snapShow(`<div class="snap-msg snap-err"><p>${esc(err.refusal ? "Die Erkennung hat das Bild abgelehnt. Bitte ein anderes Bild versuchen." : snapErrorText(err))}</p>${detail ? `<p class="snap-err-detail">Technisch: ${esc(detail)}</p>` : ""}</div>`);
     return "error";
   } finally {
     snapBusy = false;
