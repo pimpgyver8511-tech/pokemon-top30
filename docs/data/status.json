@@ -1,6 +1,6 @@
 {
- "updated": "2026-11-26T15:21:27.193Z",
- "seconds": 658,
+ "updated": "2026-11-27T15:09:40.819Z",
+ "seconds": 735,
  "sets": [
   "me06",
   "30th-c",
@@ -56,7 +56,7 @@
   "  TCGplayer: keine passende Gruppe für Evolution (2016-11-02)",
   "  TCGplayer ref-xy10: 4 Karten ohne Zuordnung, z. B. 43 Regirock EX | 54a Zygarde EX | 105a N | 111 Shauna",
   "XY trainer Kit (Pikachu Libre) (tk-xy-p): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22XY%20trainer%20Kit%20(Pikachu%20Libre)%22: HTTP 500",
+  "  pokemontcg.io: kein Set \"XY trainer Kit (Pikachu Libre)\" gefunden",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Pikachu Libre) (2016-04-27)",
   "XY trainer Kit (Suicune) (tk-xy-su): keine Preise bei TCGdex – versuche pokemontcg.io",
   "  pokemontcg.io: kein Set \"XY trainer Kit (Suicune)\" gefunden",
@@ -85,7 +85,7 @@
   "  pokemontcg.io: kein Set \"XY trainer Kit (Noivern)\" gefunden",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Noivern) (2014-03-12)",
   "XY trainer Kit (Sylveon) (tk-xy-sy): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io: kein Set \"XY trainer Kit (Sylveon)\" gefunden",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22XY%20trainer%20Kit%20(Sylveon)%22: HTTP 500",
   "  TCGplayer: keine passende Gruppe für XY trainer Kit (Sylveon) (2014-03-12)",
   "  TCGplayer: keine passende Gruppe für XY (2014-02-05)",
   "  TCGplayer ref-bw9: 1 Karten ohne Zuordnung, z. B. 118 Sigilyph",
@@ -102,7 +102,7 @@
   "Gym Challenge (gym2): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Gym Heroes (gym1): keine Preise bei TCGdex – versuche pokemontcg.io",
   "Miscellaneous Promos (miscp): keine Preise bei TCGdex – versuche pokemontcg.io",
-  "  pokemontcg.io: kein Set \"Miscellaneous Promos\" gefunden",
+  "  pokemontcg.io nicht erreichbar: https://api.pokemontcg.io/v2/sets?q=name%3A%22Miscellaneous%20Promos%22: HTTP 500",
   "  TCGplayer: keine passende Gruppe für Miscellaneous Promos (1996-01-01)"
  ]
 }
