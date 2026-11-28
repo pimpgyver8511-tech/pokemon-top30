@@ -16,6 +16,8 @@ export default defineConfig({
     serviceWorkers: "block",
     viewport: { width: 400, height: 900 },
     screenshot: "only-on-failure",
+    // Lokal mit einem vorhandenen Chromium statt des zu Playwright passenden (z. B. CHROMIUM_PATH=/opt/pw-browsers/chromium)
+    ...(process.env.CHROMIUM_PATH ? { launchOptions: { executablePath: process.env.CHROMIUM_PATH } } : {}),
     trace: "off",
   },
   webServer: {

@@ -530,6 +530,7 @@ html { scroll-behavior: smooth; }
         <button type="button" id="col-backup">Sicherung speichern</button>
         <button type="button" id="col-restore">Sicherung einlesen</button>
         <button type="button" id="col-csv">Als CSV exportieren</button>
+        <button type="button" id="col-collectr" title="Spalten wie der Export der Collectr-App; CardPal und andere Apps erkennen das Format automatisch">Für CardPal / Collectr exportieren</button>
         <button type="button" id="col-import-btn">CSV importieren</button>
         <input type="file" id="col-file" accept="application/json,.json" hidden>
         <input type="file" id="imp-file" accept=".csv,text/csv,text/plain" hidden>
@@ -3051,6 +3052,55 @@ function colCsv(entries) {
   return "﻿" + [head.map(q).join(";"), ...rows].join("\r\n");
 }
 
+// ---------- Export im Collectr-Format ----------
+// Spalten wie der Inventar-Export der Collectr-App (Portfolio → Export, Stand 2026). Viele Apps lesen dieses
+// Format, z. B. CardPal erkennt es beim Import automatisch. Preise in Euro, Set- und Kartennamen auf Englisch.
+const COLLECTR_HEAD = ["Portfolio Name", "Category", "Set", "Product Name", "Card Number", "Rarity", "Variance", "Grade", "Card Condition",
+  "Average Cost Paid", "Quantity", "Market Price", "Price Override", "Watchlist", "Date Added", "Notes"];
+const COLLECTR_RARITY = { "Häufig": "Common", "Ungewöhnlich": "Uncommon", "Selten": "Rare", "Holografisch Selten": "Holo Rare", "Selten, Holografisch": "Holo Rare",
+  "Doppelselten": "Double Rare", "Ultra Selten": "Ultra Rare", "Selten, Illustration": "Illustration Rare", "Selten, besondere Illustration": "Special Illustration Rare",
+  "Hyperselten": "Hyper Rare", "Versteckt Selten": "Secret Rare", "Mega Hyper Selten": "Mega Hyper Rare", "ASS-KLASSE": "ACE SPEC Rare", "Selten, Strahlend": "Radiant Rare",
+  "Atemberaubend": "Amazing Rare", "Promo": "Promo", "None": "", "Keine": "" };
+// Cardmarket-Zustände -> Collectr (TCGplayer-Stufen) und zurück
+const COLLECTR_COND = { MT: "Near Mint", NM: "Near Mint", EX: "Lightly Played", GD: "Moderately Played", LP: "Moderately Played", PL: "Heavily Played", PO: "Damaged" };
+const COLLECTR_COND_BACK = { "Near Mint": "NM", "Lightly Played": "EX", "Moderately Played": "GD", "Heavily Played": "PL", "Damaged": "PO" };
+const COLLECTR_LANG = { ja: " (JP)", ko: " (KR)", "zh-tw": " (CN)", "zh-cn": " (CN)" };
+// Kartennummer wie gedruckt, dreistellig wie bei Collectr: "19" + 25 Karten -> "019/025"
+function collectrNo(cur, set) {
+  if (cur.pn) return String(cur.pn);
+  const pad = (x) => (/^\d+$/.test(String(x)) ? String(x).padStart(3, "0") : String(x));
+  const no = String(cur.no ?? "");
+  const off = set?.off ?? cur.off;
+  return no ? (off ? `${pad(no)}/${pad(off)}` : pad(no)) : "";
+}
+function collectrVariance(e, cur, set) {
+  if (/reverse/i.test(e.variant ?? "")) return "Reverse Holofoil";
+  const r = COLLECTR_RARITY[cur.r] ?? cur.r ?? "";
+  if (/^(common|uncommon)$/i.test(r)) return "Normal";
+  // Normale Rares sind erst ab Karmesin & Purpur immer holo
+  if (/^rare$/i.test(r)) return (set?.date ?? "") >= "2023-03" ? "Holofoil" : "Normal";
+  return "Holofoil";
+}
+function colCollectrCsv(entries) {
+  const day = (quickData?.updated ?? new Date().toISOString()).slice(0, 10);
+  const q = (v) => { const t = String(v ?? ""); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const num = (v) => (v == null || !Number.isFinite(v) ? "0" : String(Math.round(v * 100) / 100));
+  const head = COLLECTR_HEAD.map((h) => (h === "Market Price" ? `Market Price (As of ${day})` : h));
+  const rows = entries.map((e) => {
+    const c = e.card, cur = archCurrent(c) ?? c, set = cur.s != null ? quickData?.sets[cur.s] : null;
+    const sealed = isSealed(cur);
+    const setName = String(set?.ne || set?.name || c.set || "").replace(/\s*·?\s*Sealed$/i, "") + (COLLECTR_LANG[cur.L] ?? "");
+    const notes = [e.note, e.lang ? `Sprache: ${CM_LANG_NAME[e.lang] ?? e.lang}` : "", /idProduct=/.test(cur.u ?? "") ? cur.u : ""].filter(Boolean).join(" · ");
+    return [
+      String(e.folder ?? "").split(",")[0].trim() || "Sammlung", "Pokemon", setName, cur.e || cur.n || c.n,
+      sealed ? "" : collectrNo(cur, set), sealed ? (cur.r ?? "") : (COLLECTR_RARITY[cur.r] ?? (cur.r === "None" ? "" : cur.r ?? "")),
+      sealed ? "Normal" : collectrVariance(e, cur, set), e.grade || "Ungraded", COLLECTR_COND[e.cond] ?? "Near Mint",
+      num(e.buy ?? 0), e.qty || 1, num(colNow(e) ?? 0), num(e.own ?? 0), "false", String(e.at ?? "").slice(0, 10), notes,
+    ].map(q).join(",");
+  });
+  return [head.map(q).join(","), ...rows].join("\n") + "\n";
+}
+
 function colDownload(blob, name) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -3109,6 +3159,11 @@ function colInit() {
   });
   document.getElementById("col-csv").addEventListener("click", async () => {
     colDownload(new Blob([colCsv(await colAll())], { type: "text/csv;charset=utf-8" }), `pokemon-sammlung-${new Date().toISOString().slice(0, 10)}.csv`);
+  });
+  document.getElementById("col-collectr").addEventListener("click", async () => {
+    quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+    await quickLoading;
+    colDownload(new Blob([colCollectrCsv(await colAll())], { type: "text/csv;charset=utf-8" }), `pokemon-sammlung-collectr-format-${new Date().toISOString().slice(0, 10)}.csv`);
   });
   // Sicherung: Sammlung, Wertverlauf und Archiv in einer Datei
   document.getElementById("col-backup").addEventListener("click", async () => {
@@ -3186,11 +3241,16 @@ const IMP_LANG = { International: null, Japanese: "ja", "Simplified Chinese": "z
 const IMP_LANG_OWN = { "DE/EN": null, JP: "ja", KR: "ko", CN: "zh" };
 
 function impIndex() {
-  const bySet = new Map(), bySid = new Map(), bySname = new Map(), byUrl = new Map();
+  const bySet = new Map(), bySid = new Map(), bySname = new Map(), byUrl = new Map(), byNoName = new Map(), byNo = new Map();
+  const push = (m, k, c) => (m.get(k) ?? m.set(k, []).get(k)).push(c);
   quickData.cards.forEach((c) => {
-    const k = `${c.s}|${normNo(c.no)}`;
-    (bySet.get(k) ?? bySet.set(k, []).get(k)).push(c);
-    if (/idProduct=/.test(c.u ?? "")) byUrl.set(c.u, c);
+    const nn = normNo(c.no);
+    push(bySet, `${c.s}|${nn}`, c);
+    if (/idProduct=/.test(c.u ?? "")) push(byUrl, c.u, c);
+    for (const no of new Set([nn, c._pn].filter(Boolean))) {
+      for (const n of new Set([c.n, c.e].filter(Boolean).map(impName))) push(byNoName, `${no}|${n}`, c);
+      push(byNo, `${groupOf(c)}|${no}`, c);
+    }
   });
   quickData.sets.forEach((st, i) => {
     const L = st.L ? (st.L.startsWith("zh") ? st.L : st.L) : null;
@@ -3198,14 +3258,18 @@ function impIndex() {
     add(bySid, `${L}|${impSetId(st.id)}`);
     for (const n of [st.name, st.ne]) if (n) add(bySname, `${L}|${impName(n)}`);
   });
-  return { bySet, bySid, bySname, byUrl };
+  return { bySet, bySid, bySname, byUrl, byNoName, byNo };
 }
 
 // Eine Zeile einer Karte zuordnen: Set-Kennung + Nummer, sonst Set-Name + Nummer, sonst Suche
-function impMatch(ix, { lang, setId, setName, no, name, url }) {
+function impMatch(ix, { lang, setId, setName, setAlt, setLike, no, total, promo, name, url }) {
   const L = lang && lang.startsWith("zh") ? lang : lang;
   const langs = L === "zh" ? ["zh-cn", "zh-tw"] : [L];
-  if (url && ix.byUrl.has(url)) return { c: ix.byUrl.get(url), how: "sicher" };
+  if (url && ix.byUrl.has(url)) {
+    // Asiatische Karten teilen sich oft einen Link (Produkt der japanischen Karte): Sprache entscheidet
+    const cs = ix.byUrl.get(url), g = L === "ja" ? "ja" : L === "ko" ? "ko" : L ? "zh" : "intl";
+    return { c: cs.find((c) => groupOf(c) === g) ?? cs.find((c) => groupOf(c) === "intl" || c.L === "ja") ?? cs[0], how: "sicher" };
+  }
   const nn = normNo(no);
   const pick = (setIdx) => {
     const hits = setIdx.flatMap((s) => ix.bySet.get(`${s}|${nn}`) ?? []);
@@ -3221,15 +3285,45 @@ function impMatch(ix, { lang, setId, setName, no, name, url }) {
       if (!c && /(tg|gg)$/.test(sid)) c = pick(ix.bySid.get(`${l}|${sid.slice(0, -2)}`) ?? []);
       if (c) return { c, how: "sicher" };
     }
-    if (setName) {
-      const c = pick(ix.bySname.get(`${l}|${impName(setName)}`) ?? []);
+    for (const sn of [setName, ...(setAlt ?? [])].filter(Boolean)) {
+      const c = pick(ix.bySname.get(`${l}|${impName(sn)}`) ?? []);
       if (c) return { c, how: "sicher" };
     }
   }
-  // Notlösung: Name + Nummer suchen, Sprache beachten
+  // Set-Name, der unseren Set-Namen enthält (Collectr: "SV: Scarlet & Violet 151" -> "151"):
+  // nur mit passendem Kartennamen; eindeutig = sicher
+  if (setLike && name) {
+    const full = ` ${impName(setLike)} `;
+    for (const l of langs) {
+      const sets = [];
+      for (const [k, v] of ix.bySname) {
+        const [kl, kn] = [k.slice(0, k.indexOf("|")), k.slice(k.indexOf("|") + 1)];
+        if (kl === String(l) && kn.length >= 3 && full.includes(` ${kn} `)) sets.push(...v);
+      }
+      const hits = [...new Set(sets)].flatMap((st) => ix.bySet.get(`${st}|${nn}`) ?? [])
+        .filter((c) => [c.n, c.e].some((x) => x && impName(x) === impName(name)));
+      if (hits.length) return { c: hits[0], how: hits.length === 1 ? "sicher" : "unsicher" };
+    }
+  }
+  // Notlösung: Nummer + genauer Name in der passenden Sprache, ohne Set. Ohne Sprachangabe auch japanisch
+  // (Collectr führt japanische Sets oft nur unter englischem Namen). Japanische Karten haben bei uns nur
+  // japanische Namen: dort über das Pokémon und die Nummer. Die Setgröße ("088/081") grenzt ein.
   const want = L === "ja" ? "ja" : L === "ko" ? "ko" : L ? "zh" : "intl";
-  const hit = quickSearch(`${name} ${String(no).split("/")[0]}`).list.find((c) => groupOf(c) === want);
-  if (hit && [hit.n, hit.e].some((x) => x && impName(x) === impName(name))) return { c: hit, how: "unsicher" };
+  // Bekannte Setgröße muss passen (sonst z. B. Sonderdrucke mit gleicher Nummer aus anderen Sets)
+  const ofTotal = (cs) => (total ? cs.filter((c) => quickData.sets[c.s]?.off === total || c._pnTot === total) : cs);
+  for (const g of L ? [want] : ["intl", "ja"]) {
+    let hits = (ix.byNoName.get(`${nn}|${impName(name)}`) ?? []).filter((c) => groupOf(c) === g);
+    // Über das Pokémon nur, wenn die Setgröße passt oder es eine Promo ist ("232/SV-P") und unser Set ein Promo-Set
+    if (!hits.length && g !== "intl" && (total || promo)) {
+      const words = impName(name).split(" ");
+      const sp = words.map((w) => speciesAlias.get(w)).find(Boolean);
+      if (sp) hits = (ix.byNo.get(`${g}|${nn}`) ?? []).filter((c) => c.p?.includes(sp));
+      const isPromoSet = (st) => /promo|プロモ|프로모|特典|-?p$/i.test(`${st?.name ?? ""} ${st?.id ?? ""}`);
+      hits = total ? hits.filter((c) => quickData.sets[c.s]?.off === total) : hits.filter((c) => isPromoSet(quickData.sets[c.s]));
+    }
+    hits = ofTotal(hits);
+    if (hits.length) return { c: hits[0], how: "unsicher" };
+  }
   return { c: null, how: null };
 }
 
@@ -3259,6 +3353,35 @@ function impRows(format, raw) {
       };
     });
   }
+  if (format === "collectr") {
+    // Collectr-Inventar: englische Namen, Set-Namen wie bei TCGplayer ("SV03: Obsidian Flames"),
+    // japanische Karten mit "(JP)". "Average Cost Paid" 0 heißt dort: kein Kaufpreis eingetragen.
+    const strip = (t) => String(t ?? "").replace(/\s*\((JP|Japanese|KR|Korean|CN|Chinese)\)/gi, "").trim();
+    const langOf = (t) => (/\((JP|Japanese)\)|\bJP\b/i.test(t) ? "ja" : /\((KR|Korean)\)|\bKR\b/i.test(t) ? "ko" : /\((CN|Chinese)\)|\bCN\b/.test(t) ? "zh" : null);
+    // Nur Pokémon-Karten (Collectr führt auch andere Spiele und Sealed-Produkte)
+    return raw.filter((r) => r["Product Name"] && (!r.Category || /pok/i.test(r.Category)) && r["Card Number"]).map((r) => {
+      // "Mightyena (42)", "Blissey (Prime)", "Dustox (Reverse Holo)" -> Name ohne Zusatz
+      const name = strip(r["Product Name"]).replace(/\s+-\s+[A-Z]*\d+[a-z]?\/\S+$/, "").replace(/\s*\([^)]*\)/g, "").trim();
+      const rev = /reverse/i.test(`${r.Variance ?? ""} ${r["Product Name"]}`);
+      const set = strip(r.Set);
+      const num = Number(String(r["Average Cost Paid"] ?? "").replace(",", "."));
+      const own = Number(String(r["Price Override"] ?? "").replace(",", "."));
+      const url = /https:\/\/www\.cardmarket\.com\/\S*idProduct=\d+/.exec(r.Notes ?? "")?.[0];
+      const lang = langOf(`${r.Set} ${r["Product Name"]}`);
+      const cardLang = Object.entries(CM_LANG_NAME).find(([, v]) => (r.Notes ?? "").includes(`Sprache: ${v}`))?.[0] ?? "";
+      return {
+        lang, setId: "", setName: set, setAlt: [set.replace(/^[A-Za-z0-9.]+:\s*/, "")], setLike: set,
+        no: String(r["Card Number"] ?? "").split("/")[0], total: Number(String(r["Card Number"] ?? "").split("/")[1]) || null,
+        promo: /^[A-Z]+-?P$/i.test(String(r["Card Number"] ?? "").split("/")[1] ?? ""), name, url,
+        qty: Math.max(1, Math.round(Number(r.Quantity) || 1)), variant: rev ? "Reverse Holo" : "",
+        folder: r["Portfolio Name"] || "", note: String(r.Notes ?? "").replace(/\s*·?\s*https:\/\/www\.cardmarket\.com\S*/g, "").replace(/\s*·?\s*Sprache: [^·]+/g, "").trim(),
+        buy: num > 0 ? num : null, own: own > 0 ? own : null, grade: r.Grade && !/^ungraded$/i.test(r.Grade) ? r.Grade : "",
+        cond: COLLECTR_COND_BACK[r["Card Condition"]] ?? "", cardLang,
+        key: `collectr|${r["Portfolio Name"]}|${r.Set}|${r["Card Number"]}|${r["Product Name"]}|${r.Variance}|${r.Grade}|${r["Card Condition"]}`,
+        label: `${set} · ${r["Card Number"]} · ${name}${rev ? " (Reverse Holo)" : ""}`,
+      };
+    });
+  }
   // Eigene CSV (Export dieser App)
   return raw.filter((r) => r.Karte).map((r) => ({
     lang: IMP_LANG_OWN[r.Sprache] ?? null, setId: "", setName: r.Set, no: r.Nummer, name: r["Englischer Name"] || r.Karte, url: r.Cardmarket,
@@ -3278,9 +3401,10 @@ async function impLoadFile(file) {
   }
   const h = new Set(Object.keys(raw[0] ?? {}));
   const format = ["Locale", "Set", "Id", "Number", "Name", "Quantity"].every((k) => h.has(k)) ? "dex"
-    : ["Karte", "Set", "Nummer", "Anzahl"].every((k) => h.has(k)) ? "own" : null;
+    : ["Karte", "Set", "Nummer", "Anzahl"].every((k) => h.has(k)) ? "own"
+    : ["Product Name", "Set", "Card Number", "Quantity"].every((k) => h.has(k)) ? "collectr" : null;
   if (!format) {
-    box.innerHTML = '<div class="status">Format nicht erkannt. Unterstützt: Export aus der Dex-App und die CSV dieser App („Als CSV exportieren“).</div>'; return;
+    box.innerHTML = '<div class="status">Format nicht erkannt. Unterstützt: Export aus der Dex-App, Collectr-Export (auch aus anderen Apps im Collectr-Format) und die CSV dieser App („Als CSV exportieren“).</div>'; return;
   }
   box.innerHTML = '<div class="status">Kartendaten werden geladen, gleich geht es los …</div>';
   quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
@@ -3314,7 +3438,7 @@ function impRender() {
   const value = take.reduce((s, x) => s + (unsurePrice(x.c) ? 0 : impPrice(x.c, x.r.variant) ?? 0) * x.r.qty, 0);
   const n = (v) => v.toLocaleString("de-DE");
   box.hidden = false;
-  box.innerHTML = `<h3>Import: ${esc(im.name)} <small>${im.format === "dex" ? "Dex-Export" : "CSV dieser App"}</small></h3>
+  box.innerHTML = `<h3>Import: ${esc(im.name)} <small>${{ dex: "Dex-Export", collectr: "Collectr-Format" }[im.format] ?? "CSV dieser App"}</small></h3>
     <div class="imp-stats">
       <div><b>${n(ok.length)}</b><span>sicher erkannt</span></div>
       <div><b>${n(unsure.length)}</b><span>unsicher</span></div>
@@ -3325,7 +3449,7 @@ function impRender() {
       `<label><input type="checkbox" data-imp-cat="${esc(k)}"${im.off.has(k) ? "" : " checked"}> ${esc(k || "ohne Ordner")} <small>(${n(q)})</small></label>`).join("")}</fieldset>` : ""}
     ${im.lists?.size ? `<p class="quick-hint">Karten in Dex-Listen (${[...im.lists].map(([k, n]) => `${esc(k)}: ${n.toLocaleString("de-DE")}`).join(", ")}) werden nicht doppelt gezählt: Sie stehen einmal in der Sammlung, die Liste wird als Ordner an der Karte vermerkt.</p>` : ""}
     ${unsure.length ? `<label class="imp-opt"><input type="checkbox" id="imp-unsure"${im.unsure ? " checked" : ""}> Unsichere Treffer auch übernehmen (nur über Name und Nummer gefunden)</label>` : ""}
-    <p class="quick-hint">Gleiche Einträge aus einem früheren Import werden aktualisiert, nicht doppelt angelegt. Der Preis aus der Datei wird nicht übernommen, es zählt der Cardmarket-Preis der App${im.format === "dex" ? "; Kaufpreise enthält der Dex-Export nicht" : ""}.</p>
+    <p class="quick-hint">Gleiche Einträge aus einem früheren Import werden aktualisiert, nicht doppelt angelegt. Der Preis aus der Datei wird nicht übernommen, es zählt der Cardmarket-Preis der App${im.format === "dex" ? "; Kaufpreise enthält der Dex-Export nicht" : im.format === "collectr" ? "; Kaufpreise werden übernommen (in der Währung, die in Collectr eingestellt war)" : ""}.</p>
     <div class="arch-actions">
       <button type="button" id="imp-go" class="imp-go"${take.length ? "" : " disabled"}>${n(take.length)} Einträge (${n(pieces)} Karten) übernehmen</button>
       <button type="button" id="imp-cancel">Abbrechen</button>
