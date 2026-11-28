@@ -30,8 +30,8 @@ test("Export im Collectr-Format und wieder einlesen", async ({ page }, info) => 
   ]);
   await page.click("#view-collection");
   await expect(page.locator(".col-item").first()).toBeVisible();
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#col-collectr")]);
-  expect(dl.suggestedFilename()).toMatch(/collectr-format.*\.csv$/);
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#col-collectr-csv")]);
+  expect(dl.suggestedFilename()).toMatch(/collectr.*\.csv$/);
   const file = info.outputPath("export.csv");
   await dl.saveAs(file);
   const text = fs.readFileSync(file, "utf8");
@@ -83,5 +83,30 @@ test("Collectr-Datei einlesen: Set-Namen, Zusätze, andere Spiele", async ({ pag
   expect(res[0]).toMatchObject({ i: "sv03.5-199", how: "sicher", grade: "PSA 9", buy: 120.5 });
   expect(res[1]).toMatchObject({ i: "sv08.5-161", how: "sicher", qty: 2, buy: null, cond: "EX" }); // 0 = kein Kaufpreis
   expect(res[2]).toMatchObject({ i: "sv03.5-025", how: "sicher", qty: 3, variant: "Reverse Holo" });
+  expect(errors).toEqual([]);
+});
+
+test("Excel-Export (.xlsx) mit denselben Spalten", async ({ page }, info) => {
+  const errors = watchErrors(page);
+  await openApp(page, "#suche");
+  await waitAllData(page);
+  await addCards(page, [["sv03.5-199", { qty: 2, buy: 250, note: "a < b & \"c\"" }], ["sv03.5-025", { variant: "Reverse Holo" }]]);
+  await page.click("#view-collection");
+  await expect(page.locator(".col-item").first()).toBeVisible();
+  // Dateityp der Download-Datei: eindeutig Excel (Android-Dateiauswahlen filtern danach)
+  const type = await page.evaluate(async () => xlsxBlob(colCollectrRows(await colAll())).type);
+  expect(type).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#col-collectr")]);
+  expect(dl.suggestedFilename()).toMatch(/collectr.*\.xlsx$/);
+  const file = info.outputPath("export.xlsx");
+  await dl.saveAs(file);
+  const buf = fs.readFileSync(file);
+  expect(buf.subarray(0, 2).toString()).toBe("PK"); // ZIP-Archiv
+  // Unkomprimiert gespeichert: Inhalt lässt sich direkt prüfen
+  const raw = buf.toString("utf8");
+  for (const part of ["[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml", "Portfolio Name", "Card Number", "Charizard ex", "199/165", "Reverse Holofoil", "a &lt; b &amp; &quot;c&quot;"]) {
+    expect(raw).toContain(part);
+  }
+  expect(raw).toMatch(/<c r="J(\d+)"><v>250<\/v><\/c><c r="K\1"><v>2<\/v><\/c>/); // Kaufpreis und Anzahl als Zahl
   expect(errors).toEqual([]);
 });

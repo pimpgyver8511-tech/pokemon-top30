@@ -111,6 +111,8 @@ Zuletzt aktualisiert: 10.11.2026 (abends)
 - Fehler behoben: Beim Import über den Cardmarket-Link wurde bei japanischen Karten die koreanische/chinesische Version gewählt (gleicher Link). Jetzt entscheidet die Sprache.
 - Tests: `tests/collectr.spec.mjs` (Export-Kopfzeile und Werte, Rückimport, Collectr-Datei mit Präfix-Set, Zusatz und anderem Spiel). Lokal ohne passenden Playwright-Browser: `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
 
+- **Excel-Export (28.11.):** Rückmeldung: In CardPals Dateiauswahl (Android) ließ sich die CSV nicht auswählen. Vermutete Ursache: Dateityp `text/csv;charset=utf-8` (Android-Auswahlen filtern nach exaktem Typ). Jetzt CSV-Downloads als `text/csv` und zusätzlich (empfohlen) Excel `.xlsx` (`xlsxBlob`: eigenes unkomprimiertes ZIP mit Inline-Texten, Zahlen als Zahl; mit openpyxl geprüft). Knöpfe: „Für CardPal / Collectr (Excel)“ und „… als CSV“.
+
 ## Offen
 
 1. Optional: Seite in Chrome als App installieren und das Teilen-Menü ausprobieren

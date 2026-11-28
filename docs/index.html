@@ -530,7 +530,8 @@ html { scroll-behavior: smooth; }
         <button type="button" id="col-backup">Sicherung speichern</button>
         <button type="button" id="col-restore">Sicherung einlesen</button>
         <button type="button" id="col-csv">Als CSV exportieren</button>
-        <button type="button" id="col-collectr" title="Spalten wie der Export der Collectr-App; CardPal und andere Apps erkennen das Format automatisch">Für CardPal / Collectr exportieren</button>
+        <button type="button" id="col-collectr" title="Excel-Datei mit den Spalten des Collectr-Exports; CardPal und andere Apps erkennen das Format automatisch">Für CardPal / Collectr (Excel)</button>
+        <button type="button" id="col-collectr-csv" title="Dasselbe als CSV-Datei">… als CSV</button>
         <button type="button" id="col-import-btn">CSV importieren</button>
         <input type="file" id="col-file" accept="application/json,.json" hidden>
         <input type="file" id="imp-file" accept=".csv,text/csv,text/plain" hidden>
@@ -2555,7 +2556,7 @@ function archInit() {
     }
   });
   document.getElementById("arch-export").addEventListener("click", async () => {
-    const blob = new Blob([archCsv(await archAll())], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([archCsv(await archAll())], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `pokemon-archiv-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -3081,10 +3082,9 @@ function collectrVariance(e, cur, set) {
   if (/^rare$/i.test(r)) return (set?.date ?? "") >= "2023-03" ? "Holofoil" : "Normal";
   return "Holofoil";
 }
-function colCollectrCsv(entries) {
+function colCollectrRows(entries) {
   const day = (quickData?.updated ?? new Date().toISOString()).slice(0, 10);
-  const q = (v) => { const t = String(v ?? ""); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
-  const num = (v) => (v == null || !Number.isFinite(v) ? "0" : String(Math.round(v * 100) / 100));
+  const num = (v) => (v == null || !Number.isFinite(v) ? 0 : Math.round(v * 100) / 100);
   const head = COLLECTR_HEAD.map((h) => (h === "Market Price" ? `Market Price (As of ${day})` : h));
   const rows = entries.map((e) => {
     const c = e.card, cur = archCurrent(c) ?? c, set = cur.s != null ? quickData?.sets[cur.s] : null;
@@ -3096,9 +3096,60 @@ function colCollectrCsv(entries) {
       sealed ? "" : collectrNo(cur, set), sealed ? (cur.r ?? "") : (COLLECTR_RARITY[cur.r] ?? (cur.r === "None" ? "" : cur.r ?? "")),
       sealed ? "Normal" : collectrVariance(e, cur, set), e.grade || "Ungraded", COLLECTR_COND[e.cond] ?? "Near Mint",
       num(e.buy ?? 0), e.qty || 1, num(colNow(e) ?? 0), num(e.own ?? 0), "false", String(e.at ?? "").slice(0, 10), notes,
-    ].map(q).join(",");
+    ];
   });
-  return [head.map(q).join(","), ...rows].join("\n") + "\n";
+  return [head, ...rows];
+}
+function colCollectrCsv(entries) {
+  const q = (v) => { const t = String(v ?? ""); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  return colCollectrRows(entries).map((r) => r.map(q).join(",")).join("\n") + "\n";
+}
+
+// ---------- Excel-Datei (.xlsx) ohne Zusatz-Bibliothek ----------
+// Eine .xlsx-Datei ist ein ZIP-Archiv mit ein paar XML-Dateien. Hier unkomprimiert ("stored"), das reicht.
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b) { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function zipStored(files) {
+  const enc = new TextEncoder(), parts = [], central = [];
+  let off = 0;
+  for (const [name, text] of files) {
+    const nb = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true);
+    h.setUint32(22, data.length, true); h.setUint16(26, nb.length, true); h.setUint16(28, 0, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint16(10, 0, true); c.setUint16(12, 0, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true);
+    c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nb.length, true);
+    c.setUint32(42, off, true);
+    parts.push(new Uint8Array(h.buffer), nb, data);
+    central.push(new Uint8Array(c.buffer), nb);
+    off += 30 + nb.length + data.length;
+  }
+  const size = central.reduce((n, x) => n + x.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, size, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+const xmlEsc = (t) => String(t).replace(/[<>&"]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[ch]).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+const xlsxCol = (i) => { let s = ""; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s; return s; };
+// rows: Zeilen mit Texten und Zahlen; Zahlen werden als Zahl gespeichert, alles andere als Text
+function xlsxBlob(rows, sheet = "Sheet1") {
+  const data = rows.map((r, y) => `<row r="${y + 1}">${r.map((v, x) => {
+    const ref = `${xlsxCol(x)}${y + 1}`;
+    return typeof v === "number" && Number.isFinite(v) ? `<c r="${ref}"><v>${v}</v></c>`
+      : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v ?? "")}</t></is></c>`;
+  }).join("")}</row>`).join("");
+  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  return zipStored([
+    ["[Content_Types].xml", `${X}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`],
+    ["_rels/.rels", `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml", `${X}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEsc(sheet)}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`],
+    ["xl/worksheets/sheet1.xml", `${X}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${data}</sheetData></worksheet>`],
+  ]);
 }
 
 function colDownload(blob, name) {
@@ -3158,12 +3209,18 @@ function colInit() {
     if (b) { colSort = b.dataset.colSort; renderCollection(); }
   });
   document.getElementById("col-csv").addEventListener("click", async () => {
-    colDownload(new Blob([colCsv(await colAll())], { type: "text/csv;charset=utf-8" }), `pokemon-sammlung-${new Date().toISOString().slice(0, 10)}.csv`);
+    colDownload(new Blob([colCsv(await colAll())], { type: "text/csv" }), `pokemon-sammlung-${new Date().toISOString().slice(0, 10)}.csv`);
   });
+  const collectrName = (ext) => `pokemon-sammlung-collectr-${new Date().toISOString().slice(0, 10)}.${ext}`;
   document.getElementById("col-collectr").addEventListener("click", async () => {
     quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
     await quickLoading;
-    colDownload(new Blob([colCollectrCsv(await colAll())], { type: "text/csv;charset=utf-8" }), `pokemon-sammlung-collectr-format-${new Date().toISOString().slice(0, 10)}.csv`);
+    colDownload(xlsxBlob(colCollectrRows(await colAll()), "Collection"), collectrName("xlsx"));
+  });
+  document.getElementById("col-collectr-csv").addEventListener("click", async () => {
+    quickLoading ??= loadQuick().catch(() => { quickLoading = null; });
+    await quickLoading;
+    colDownload(new Blob([colCollectrCsv(await colAll())], { type: "text/csv" }), collectrName("csv"));
   });
   // Sicherung: Sammlung, Wertverlauf und Archiv in einer Datei
   document.getElementById("col-backup").addEventListener("click", async () => {
